@@ -81,8 +81,14 @@
 </head>
 <body>
 
-<!-- LOGIN SCREEN -->
-<div id="login-screen" class="login-bg" style="display:none">
+<noscript>
+  <div style="background:#fee2e2;color:#991b1b;padding:20px;text-align:center;font-family:sans-serif">
+    เบราว์เซอร์ของท่านปิด JavaScript — กรุณาเปิด JavaScript เพื่อใช้งานระบบนี้
+  </div>
+</noscript>
+
+<!-- LOGIN SCREEN (default visible — JS จะซ่อนเมื่อมี session) -->
+<div id="login-screen" class="login-bg">
   <div class="login-card">
     <div class="text-center mb-6">
       <div class="text-3xl mb-2">🏥</div>
