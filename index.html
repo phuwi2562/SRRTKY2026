@@ -1,0 +1,2255 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ระบบรายงานสอบสวนโรคเฉพาะราย</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11">
+
+let auditActionChart = null;
+let auditUserChart = null;
+
+function loadPdfReportPage(){
+  refreshCases(false);
+  renderPdfReports();
+}
+
+function renderPdfReports(){
+  if (typeof pdfRows === 'undefined' || !pdfRows) return;
+  const q = (pdfSearch?.value || '').toLowerCase();
+  const df = pdfDiseaseFilter?.value || '';
+  const data = cases.filter(c => (!df || c.disease === df) && JSON.stringify(c).toLowerCase().includes(q));
+
+  pdfRows.innerHTML = data.map(c => `
+    <tr>
+      <td>${fmt(c.createdAt)}</td>
+      <td>${c.reportNo || ''}</td>
+      <td>${c.disease || ''}</td>
+      <td>${c.patientName || ''}</td>
+      <td>${c.cid || ''}</td>
+      <td>${statusText(c.status)}</td>
+      <td>
+        <button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">🧾 สร้าง PDF</button>
+        ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด PDF</a>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b">ยังไม่มีข้อมูลสำหรับออกรายงาน</td></tr>';
+}
+
+async function createPdf(caseId) {
+  const confirm = await Swal.fire({
+    title: 'สร้าง PDF แบบฟอร์มราชการ?',
+    text: 'ระบบจะสร้างไฟล์ PDF และบันทึก URL กลับเข้า Google Sheet',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'สร้าง PDF',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังสร้าง PDF แบบฟอร์มราชการ');
+  const res = await callServer('generateCasePdf', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('สร้าง PDF ไม่สำเร็จ', res.message, 'error');
+
+  Swal.fire({
+    icon: 'success',
+    title: 'สร้าง PDF สำเร็จ',
+    html: `<a href="${res.url}" target="_blank" class="swal2-confirm swal2-styled">เปิด PDF</a>`,
+    showConfirmButton: true,
+    confirmButtonText: 'ตกลง'
+  });
+
+  refreshCases(false);
+}
+
+async function openChangePassword() {
+  const { value: formValues } = await Swal.fire({
+    title: 'เปลี่ยนรหัสผ่าน',
+    html:
+      `<input id="oldPass" type="password" class="swal2-input" placeholder="รหัสผ่านเดิม">` +
+      `<input id="newPass" type="password" class="swal2-input" placeholder="รหัสผ่านใหม่">` +
+      `<input id="confirmPass" type="password" class="swal2-input" placeholder="ยืนยันรหัสผ่านใหม่">`,
+    focusConfirm: false,
+    preConfirm: () => {
+      const oldPass = document.getElementById('oldPass').value;
+      const newPass = document.getElementById('newPass').value;
+      const confirmPass = document.getElementById('confirmPass').value;
+
+      if (!oldPass || !newPass || !confirmPass) {
+        Swal.showValidationMessage('กรอกข้อมูลให้ครบ');
+        return false;
+      }
+      if (newPass.length < 6) {
+        Swal.showValidationMessage('รหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร');
+        return false;
+      }
+      if (newPass !== confirmPass) {
+        Swal.showValidationMessage('รหัสใหม่ไม่ตรงกัน');
+        return false;
+      }
+      return { oldPass, newPass };
+    }
+  });
+
+  if (!formValues) return;
+
+  loading('กำลังเปลี่ยนรหัสผ่าน...');
+  const res = await callServer('changePassword', [
+    currentUser.username,
+    formValues.oldPass,
+    formValues.newPass
+  ]);
+  Swal.close();
+
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+}
+
+async function loadAuditDashboard() {
+  loading('กำลังโหลด Audit Dashboard');
+  const res = await callServer('getAuditSummary', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('ไม่สำเร็จ', res.message, 'error');
+
+  const d = res.data;
+  auditTotal.textContent = d.total || 0;
+  auditLogin.textContent = d.loginSuccess || 0;
+  auditFailed.textContent = d.loginFailed || 0;
+  auditPdf.textContent = d.pdfCreated || 0;
+
+  renderAuditChart('auditActionChart', 'action', d.byAction);
+  renderAuditChart('auditUserChart', 'user', d.byUser);
+
+  auditRows.innerHTML = (d.latest || []).map(l => `
+    <tr>
+      <td>${fmt(l.timestamp)}</td>
+      <td>${l.username || ''}</td>
+      <td>${l.role || ''}</td>
+      <td>${l.action || ''}</td>
+      <td>${l.detail || ''}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="text-align:center;color:#64748b">ยังไม่มี log</td></tr>';
+}
+
+function renderAuditChart(canvasId, type, obj) {
+  const labels = Object.keys(obj || {});
+  const data = Object.values(obj || {});
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+
+  if (canvasId === 'auditActionChart' && auditActionChart) auditActionChart.destroy();
+  if (canvasId === 'auditUserChart' && auditUserChart) auditUserChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type: type === 'action' ? 'bar' : 'doughnut',
+    data: {
+      labels,
+      datasets: [{ label: 'จำนวน', data }]
+    },
+    options: { responsive: true, plugins: { legend: { display: type !== 'action' } } }
+  });
+
+  if (canvasId === 'auditActionChart') auditActionChart = chart;
+  if (canvasId === 'auditUserChart') auditUserChart = chart;
+}
+
+
+
+let epiWeekChart = null;
+let diseasePieChart = null;
+let villageBarChart = null;
+
+async function loadEpiDashboard(showLoading = true) {
+  if (showLoading) loading('กำลังโหลด Epi Dashboard');
+  const res = await callServer('getEpiDashboard', [currentUser]);
+  if (showLoading) Swal.close();
+
+  if (!res.ok) {
+    if (showLoading) Swal.fire('โหลด Dashboard ไม่สำเร็จ', res.message, 'error');
+    return;
+  }
+
+  const d = res.data || {};
+  drawEpiChart('epiWeekChart', 'bar', d.byWeekLabels || [], d.byWeekValues || [], 'จำนวนรายงานรายสัปดาห์');
+  drawObjectChart('diseasePieChart', 'doughnut', d.byDisease || {}, 'จำนวนรายงานแยกโรค');
+  drawTopVillageChart(d.topVillages || []);
+  renderHotspots(d.topHotspots || []);
+}
+
+function drawEpiChart(canvasId, type, labels, data, label) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (canvasId === 'epiWeekChart' && epiWeekChart) epiWeekChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type,
+    data: { labels, datasets: [{ label, data }] },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: type === 'bar' ? { y: { beginAtZero: true, ticks: { precision: 0 } } } : {}
+    }
+  });
+
+  if (canvasId === 'epiWeekChart') epiWeekChart = chart;
+}
+
+function drawObjectChart(canvasId, type, obj, label) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  const labels = Object.keys(obj || {});
+  const data = Object.values(obj || {});
+
+  if (canvasId === 'diseasePieChart' && diseasePieChart) diseasePieChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type,
+    data: { labels, datasets: [{ label, data }] },
+    options: { responsive: true }
+  });
+
+  if (canvasId === 'diseasePieChart') diseasePieChart = chart;
+}
+
+function drawTopVillageChart(items) {
+  const ctx = document.getElementById('villageBarChart');
+  if (!ctx) return;
+  if (villageBarChart) villageBarChart.destroy();
+
+  villageBarChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: items.map(x => x.label),
+      datasets: [{ label: 'จำนวนรายงาน', data: items.map(x => x.value) }]
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderHotspots(items) {
+  if (typeof hotspotRows === 'undefined' || !hotspotRows) return;
+  hotspotRows.innerHTML = items.map((x, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${x.label}</td>
+      <td><b>${x.value}</b></td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" style="text-align:center;color:#64748b">ยังไม่มีข้อมูล hotspot</td></tr>';
+}
+
+async function migratePasswordHashFromUI() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    return Swal.fire('ไม่อนุญาต', 'เฉพาะผู้ดูแลระบบเท่านั้น', 'warning');
+  }
+  const confirm = await Swal.fire({
+    title: 'แปลงรหัสผ่านเป็น SHA-256?',
+    text: 'ระบบจะเข้ารหัส password เดิมทุกบัญชีในชีต users',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'เริ่มแปลง',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังแปลงรหัสผ่าน');
+  const res = await callServer('migratePasswordsToHash');
+  Swal.close();
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+}
+
+
+
+let editingCaseId = null;
+let editingCaseData = null;
+
+async function loadRegisterPage(){
+  await refreshCases(false);
+  renderRegister();
+}
+
+function renderRegister(){
+  if (typeof registerRows === 'undefined' || !registerRows) return;
+
+  const q = (registerSearch?.value || '').toLowerCase();
+  const df = registerDiseaseFilter?.value || '';
+  const sf = registerStatusFilter?.value || '';
+
+  const data = cases.filter(c => {
+    const hitQ = JSON.stringify(c).toLowerCase().includes(q);
+    const hitD = !df || c.disease === df;
+    const hitS = !sf || c.status === sf;
+    return hitQ && hitD && hitS;
+  });
+
+  registerRows.innerHTML = data.map(c => `
+    <tr>
+      <td>${fmt(c.createdAt)}</td>
+      <td>${c.reportNo || ''}</td>
+      <td>${c.disease || ''}</td>
+      <td>${c.patientName || ''}</td>
+      <td>${c.cid || ''}</td>
+      <td>${[c.village, c.moo ? 'หมู่ ' + c.moo : '', c.tambon].filter(Boolean).join(' ')}</td>
+      <td>${statusText(c.status)}</td>
+      <td>${fmt(c.updatedAt)}</td>
+      <td>
+        <button class="btn btn-small btn-ghost" onclick="openEditCase('${c.caseId}')">✏️ แก้ไข</button>
+        <button class="btn btn-small btn-ghost" onclick="viewCaseLogs('${c.caseId}')">🧾 Log</button>
+        <button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">PDF</button>
+        ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด</a>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="9" style="text-align:center;color:#64748b">ยังไม่มีข้อมูลทะเบียนรายงานโรค</td></tr>';
+}
+
+async function openEditCase(caseId){
+  editingCaseId = caseId;
+  loading('กำลังเปิดแบบสอบสวน');
+  const res = await callServer('getCaseById', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('เปิดข้อมูลไม่สำเร็จ', res.message, 'error');
+
+  editingCaseData = res.data || {};
+  const key = editingCaseData.templateKey || inferTemplateKeyFromDisease(editingCaseData.disease);
+  editTemplateKey.value = key || Object.keys(TEMPLATES)[0];
+  renderEditDiseaseForm();
+
+  editCaseInfo.innerHTML = `
+    <b>เลขที่รายงาน:</b> ${editingCaseData.reportNo || '-'} |
+    <b>ผู้ป่วย:</b> ${editingCaseData.patientName || '-'} |
+    <b>โรค:</b> ${editingCaseData.disease || '-'} |
+    <b>ปรับปรุงล่าสุด:</b> ${fmt(editingCaseData.updatedAt)}
+  `;
+
+  fillEditForm(editingCaseData);
+  showPage('editCase');
+}
+
+function inferTemplateKeyFromDisease(disease){
+  disease = String(disease || '');
+  return Object.keys(TEMPLATES).find(k => TEMPLATES[k].label === disease || disease.includes(TEMPLATES[k].label)) || '';
+}
+
+function renderEditDiseaseForm(){
+  const key = editTemplateKey.value;
+  const tmpl = TEMPLATES[key];
+  if (!tmpl) return;
+
+  editDiseaseLabel.value = tmpl.label;
+  let html = '';
+  tmpl.sections.forEach(sec => {
+    html += `<div class="section-title">${sec.title}</div><div class="grid">`;
+    sec.fields.forEach(f => html += renderEditField(f));
+    html += '</div>';
+  });
+  editDynamicForm.innerHTML = html;
+
+  // เติมข้อมูลเดิมอีกครั้งหลังเปลี่ยน template
+  if (editingCaseData) fillEditForm(editingCaseData);
+}
+
+function renderEditField(f){
+  const [id,label,type,opts] = f;
+  const eid = 'edit_' + id;
+  const wide = ['textarea','datetime-local'].includes(type) || ['summary','controlMeasureSummary','riskHistory','diagnosis','labResult','controlMeasure','investigatorTeam'].includes(id);
+  const col = wide ? 'c6' : 'c3';
+
+  if(type === 'textarea') return `<div class="${col} fg"><label>${label}</label><textarea id="${eid}" data-field="${id}"></textarea></div>`;
+
+  if(type === 'select') {
+    const options = (opts || []).map(o => {
+      let v = o, t = o;
+      if(String(o).includes('|')){ const a = String(o).split('|'); v = a[0]; t = a[1]; }
+      return `<option value="${v}">${t}</option>`;
+    }).join('');
+    return `<div class="${col} fg"><label>${label}</label><select id="${eid}" data-field="${id}">${options}</select></div>`;
+  }
+
+  if(type === 'checkbox') {
+    return `<div class="${col} fg"><label>&nbsp;</label><div class="checkwrap"><input id="${eid}" data-field="${id}" type="checkbox"><span>${label}</span></div></div>`;
+  }
+
+  return `<div class="${col} fg"><label>${label}</label><input id="${eid}" data-field="${id}" type="${type || 'text'}"></div>`;
+}
+
+function fillEditForm(data){
+  const inputs = editDynamicForm.querySelectorAll('[data-field]');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    const val = data[field];
+
+    if (el.type === 'checkbox') {
+      el.checked = val === 'ใช่' || val === true || val === 'true';
+    } else {
+      el.value = normalizeForInputValue(el, val);
+    }
+  });
+}
+
+function normalizeForInputValue(el, val){
+  if (val === undefined || val === null) return '';
+  if (el.type === 'date' && String(val).includes('T')) return String(val).slice(0,10);
+  if (el.type === 'datetime-local' && String(val).includes('T')) return String(val).slice(0,16);
+  return val;
+}
+
+function collectEditForm(){
+  const key = editTemplateKey.value;
+  const tmpl = TEMPLATES[key];
+  const payload = { templateKey: key, disease: tmpl.label };
+
+  const inputs = editDynamicForm.querySelectorAll('[data-field]');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    payload[field] = el.type === 'checkbox' ? (el.checked ? 'ใช่' : '') : el.value;
+  });
+
+  return payload;
+}
+
+async function saveEditedCase(){
+  if (!editingCaseId) return Swal.fire('ไม่พบข้อมูล', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  const payload = collectEditForm();
+  if (!payload.patientName) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกชื่อผู้ป่วย', 'warning');
+
+  const confirm = await Swal.fire({
+    title: 'บันทึกการแก้ไข?',
+    text: 'ระบบจะบันทึกทับรายงานเดิม และเก็บ log การแก้ไข',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังบันทึกการแก้ไข');
+  const res = await callServer('updateCase', [editingCaseId, payload, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('บันทึกไม่สำเร็จ', res.message, 'error');
+
+  editingCaseData = Object.assign({}, editingCaseData, payload);
+  await refreshCases(false);
+
+  Swal.fire({
+    icon: 'success',
+    title: 'บันทึกสำเร็จ',
+    html: `<div style="text-align:left"><b>รายการเปลี่ยนแปลง:</b><br>${(res.changed || '').replaceAll(';','<br>')}</div>`
+  });
+}
+
+async function viewCaseLogs(caseId){
+  loading('กำลังโหลดประวัติการแก้ไข');
+  const res = await callServer('getCaseEditLogs', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('โหลด Log ไม่สำเร็จ', res.message, 'error');
+
+  const html = (res.data || []).map(l => `
+    <div style="text-align:left;border-bottom:1px solid #e5e7eb;padding:8px 0">
+      <b>${fmt(l.timestamp)}</b> | ${l.username || ''} | ${l.action || ''}<br>
+      <span style="color:#475569">${l.detail || ''}</span>
+    </div>
+  `).join('') || '<div style="color:#64748b">ยังไม่พบประวัติการแก้ไข</div>';
+
+  Swal.fire({
+    title: '🧾 ประวัติการแก้ไข',
+    html: `<div style="max-height:460px;overflow:auto">${html}</div>`,
+    width: 850,
+    confirmButtonText: 'ปิด'
+  });
+}
+
+function loadCurrentCaseLogs(){
+  if (!editingCaseId) return Swal.fire('ไม่พบข้อมูล', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+  viewCaseLogs(editingCaseId);
+}
+
+
+
+async function loadAIPage(){
+  await checkAIStatus(false);
+}
+
+async function checkAIStatus(show = true){
+  if (show) loading('กำลังตรวจสถานะ AI');
+  const res = await callServer('getOpenAIStatus', [currentUser]);
+  if (show) Swal.close();
+
+  if (!res.ok) {
+    aiStatusBox.innerHTML = 'สถานะ AI: ❌ ' + res.message;
+    return;
+  }
+
+  aiStatusBox.innerHTML = res.configured
+    ? `สถานะ AI: ✅ พร้อมใช้งาน | Model: <b>${res.model}</b> | Key: <b>${res.maskedKey}</b> | Mode: <b>Script Properties</b>`
+    : 'สถานะ AI: ⚠️ ยังไม่ได้ตั้งค่า OPENAI_API_KEY ใน Script Properties';
+
+  if (typeof aiAdminSetupBox !== 'undefined' && aiAdminSetupBox) {
+    aiAdminSetupBox.classList.toggle('hidden', !(currentUser && currentUser.role === 'admin'));
+  }
+}
+
+async function saveOpenAISettings(){
+  if (!openaiApiKeyInput.value.trim()) {
+    return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอก OpenAI API Key', 'warning');
+  }
+
+  const confirm = await Swal.fire({
+    title: 'บันทึก OpenAI API Key?',
+    text: 'ระบบจะเก็บ API Key ใน Script Properties ของ Apps Script',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังบันทึก AI Key');
+  const res = await callServer('setupOpenAI', [openaiApiKeyInput.value.trim(), openaiModelInput.value.trim(), currentUser]);
+  Swal.close();
+
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+  if (res.ok) {
+    openaiApiKeyInput.value = '';
+    checkAIStatus(false);
+  }
+}
+
+async function aiCaseSummary(){
+  if (!editingCaseId) return Swal.fire('ไม่พบรายงาน', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  loading('AI กำลังวิเคราะห์รายเคส...');
+  const res = await callServer('generateAISummaryAdvanced', [editingCaseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+
+  const result = await Swal.fire({
+    title: '🤖 AI สรุปผลการสอบสวน',
+    html: `<textarea id="aiSummaryBox" style="width:100%;height:420px;border:1px solid #ddd;border-radius:12px;padding:12px;font-family:Sarabun,Arial">${res.summary}</textarea>`,
+    width: 900,
+    showCancelButton: true,
+    confirmButtonText: 'นำไปใส่ช่องสรุปรายงาน',
+    cancelButtonText: 'ปิด'
+  });
+
+  if (result.isConfirmed) {
+    const text = document.getElementById('aiSummaryBox').value;
+    const summaryEl = editDynamicForm.querySelector('[data-field="summary"]');
+    if (summaryEl) summaryEl.value = text;
+    Swal.fire('สำเร็จ', 'นำ AI Summary ไปใส่ช่องสรุปรายงานแล้ว กรุณากดบันทึกการแก้ไข', 'success');
+  }
+}
+
+async function aiControlMeasures(){
+  if (!editingCaseId) return Swal.fire('ไม่พบรายงาน', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  loading('AI กำลังเสนอแนะมาตรการควบคุมโรค...');
+  const res = await callServer('generateAIControlMeasures', [editingCaseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+
+  const result = await Swal.fire({
+    title: '🛡️ AI มาตรการควบคุมโรค',
+    html: `<textarea id="aiControlBox" style="width:100%;height:420px;border:1px solid #ddd;border-radius:12px;padding:12px;font-family:Sarabun,Arial">${res.result}</textarea>`,
+    width: 900,
+    showCancelButton: true,
+    confirmButtonText: 'นำไปใส่ช่องมาตรการ',
+    cancelButtonText: 'ปิด'
+  });
+
+  if (result.isConfirmed) {
+    const text = document.getElementById('aiControlBox').value;
+    const controlEl = editDynamicForm.querySelector('[data-field="controlMeasureSummary"]') || editDynamicForm.querySelector('[data-field="controlMeasure"]');
+    if (controlEl) controlEl.value = text;
+    Swal.fire('สำเร็จ', 'นำมาตรการจาก AI ไปใส่ในแบบสอบสวนแล้ว กรุณากดบันทึกการแก้ไข', 'success');
+  }
+}
+
+async function aiCluster(){
+  loading('AI กำลังวิเคราะห์ Cluster...');
+  const res = await callServer('analyzeClusterAI', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+async function aiRisk(){
+  loading('AI กำลังวิเคราะห์ Risk Pattern...');
+  const res = await callServer('analyzeRiskPatternAI', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+async function aiExecutiveReport(){
+  loading('AI กำลังเขียนรายงานผู้บริหาร...');
+  const res = await callServer('generateAIExecutiveReport', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI สร้างรายงานไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+function copyAIOutput(){
+  const text = aiOutput.value || '';
+  if (!text) return Swal.fire('ไม่มีข้อความ', 'ยังไม่มีผลวิเคราะห์ให้คัดลอก', 'info');
+  navigator.clipboard.writeText(text).then(
+    () => Swal.fire('คัดลอกแล้ว', 'คัดลอกผลวิเคราะห์ AI แล้ว', 'success'),
+    () => Swal.fire('คัดลอกไม่สำเร็จ', 'กรุณาเลือกข้อความแล้วคัดลอกเอง', 'warning')
+  );
+}
+
+
+
+async function clearOpenAISettings(){
+  const confirm = await Swal.fire({
+    title: 'ลบ OpenAI API Key?',
+    text: 'ระบบจะลบค่า OPENAI_API_KEY ออกจาก Script Properties',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ลบ',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังลบ API Key');
+  const res = await callServer('clearOpenAIKey', [currentUser]);
+  Swal.close();
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+  checkAIStatus(false);
+}
+
+</script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js">
+
+let auditActionChart = null;
+let auditUserChart = null;
+
+function loadPdfReportPage(){
+  refreshCases(false);
+  renderPdfReports();
+}
+
+function renderPdfReports(){
+  if (typeof pdfRows === 'undefined' || !pdfRows) return;
+  const q = (pdfSearch?.value || '').toLowerCase();
+  const df = pdfDiseaseFilter?.value || '';
+  const data = cases.filter(c => (!df || c.disease === df) && JSON.stringify(c).toLowerCase().includes(q));
+
+  pdfRows.innerHTML = data.map(c => `
+    <tr>
+      <td>${fmt(c.createdAt)}</td>
+      <td>${c.reportNo || ''}</td>
+      <td>${c.disease || ''}</td>
+      <td>${c.patientName || ''}</td>
+      <td>${c.cid || ''}</td>
+      <td>${statusText(c.status)}</td>
+      <td>
+        <button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">🧾 สร้าง PDF</button>
+        ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด PDF</a>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b">ยังไม่มีข้อมูลสำหรับออกรายงาน</td></tr>';
+}
+
+async function createPdf(caseId) {
+  const confirm = await Swal.fire({
+    title: 'สร้าง PDF แบบฟอร์มราชการ?',
+    text: 'ระบบจะสร้างไฟล์ PDF และบันทึก URL กลับเข้า Google Sheet',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'สร้าง PDF',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังสร้าง PDF แบบฟอร์มราชการ');
+  const res = await callServer('generateCasePdf', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('สร้าง PDF ไม่สำเร็จ', res.message, 'error');
+
+  Swal.fire({
+    icon: 'success',
+    title: 'สร้าง PDF สำเร็จ',
+    html: `<a href="${res.url}" target="_blank" class="swal2-confirm swal2-styled">เปิด PDF</a>`,
+    showConfirmButton: true,
+    confirmButtonText: 'ตกลง'
+  });
+
+  refreshCases(false);
+}
+
+async function openChangePassword() {
+  const { value: formValues } = await Swal.fire({
+    title: 'เปลี่ยนรหัสผ่าน',
+    html:
+      `<input id="oldPass" type="password" class="swal2-input" placeholder="รหัสผ่านเดิม">` +
+      `<input id="newPass" type="password" class="swal2-input" placeholder="รหัสผ่านใหม่">` +
+      `<input id="confirmPass" type="password" class="swal2-input" placeholder="ยืนยันรหัสผ่านใหม่">`,
+    focusConfirm: false,
+    preConfirm: () => {
+      const oldPass = document.getElementById('oldPass').value;
+      const newPass = document.getElementById('newPass').value;
+      const confirmPass = document.getElementById('confirmPass').value;
+
+      if (!oldPass || !newPass || !confirmPass) {
+        Swal.showValidationMessage('กรอกข้อมูลให้ครบ');
+        return false;
+      }
+      if (newPass.length < 6) {
+        Swal.showValidationMessage('รหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร');
+        return false;
+      }
+      if (newPass !== confirmPass) {
+        Swal.showValidationMessage('รหัสใหม่ไม่ตรงกัน');
+        return false;
+      }
+      return { oldPass, newPass };
+    }
+  });
+
+  if (!formValues) return;
+
+  loading('กำลังเปลี่ยนรหัสผ่าน...');
+  const res = await callServer('changePassword', [
+    currentUser.username,
+    formValues.oldPass,
+    formValues.newPass
+  ]);
+  Swal.close();
+
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+}
+
+async function loadAuditDashboard() {
+  loading('กำลังโหลด Audit Dashboard');
+  const res = await callServer('getAuditSummary', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('ไม่สำเร็จ', res.message, 'error');
+
+  const d = res.data;
+  auditTotal.textContent = d.total || 0;
+  auditLogin.textContent = d.loginSuccess || 0;
+  auditFailed.textContent = d.loginFailed || 0;
+  auditPdf.textContent = d.pdfCreated || 0;
+
+  renderAuditChart('auditActionChart', 'action', d.byAction);
+  renderAuditChart('auditUserChart', 'user', d.byUser);
+
+  auditRows.innerHTML = (d.latest || []).map(l => `
+    <tr>
+      <td>${fmt(l.timestamp)}</td>
+      <td>${l.username || ''}</td>
+      <td>${l.role || ''}</td>
+      <td>${l.action || ''}</td>
+      <td>${l.detail || ''}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="text-align:center;color:#64748b">ยังไม่มี log</td></tr>';
+}
+
+function renderAuditChart(canvasId, type, obj) {
+  const labels = Object.keys(obj || {});
+  const data = Object.values(obj || {});
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+
+  if (canvasId === 'auditActionChart' && auditActionChart) auditActionChart.destroy();
+  if (canvasId === 'auditUserChart' && auditUserChart) auditUserChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type: type === 'action' ? 'bar' : 'doughnut',
+    data: {
+      labels,
+      datasets: [{ label: 'จำนวน', data }]
+    },
+    options: { responsive: true, plugins: { legend: { display: type !== 'action' } } }
+  });
+
+  if (canvasId === 'auditActionChart') auditActionChart = chart;
+  if (canvasId === 'auditUserChart') auditUserChart = chart;
+}
+
+
+
+let epiWeekChart = null;
+let diseasePieChart = null;
+let villageBarChart = null;
+
+async function loadEpiDashboard(showLoading = true) {
+  if (showLoading) loading('กำลังโหลด Epi Dashboard');
+  const res = await callServer('getEpiDashboard', [currentUser]);
+  if (showLoading) Swal.close();
+
+  if (!res.ok) {
+    if (showLoading) Swal.fire('โหลด Dashboard ไม่สำเร็จ', res.message, 'error');
+    return;
+  }
+
+  const d = res.data || {};
+  drawEpiChart('epiWeekChart', 'bar', d.byWeekLabels || [], d.byWeekValues || [], 'จำนวนรายงานรายสัปดาห์');
+  drawObjectChart('diseasePieChart', 'doughnut', d.byDisease || {}, 'จำนวนรายงานแยกโรค');
+  drawTopVillageChart(d.topVillages || []);
+  renderHotspots(d.topHotspots || []);
+}
+
+function drawEpiChart(canvasId, type, labels, data, label) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (canvasId === 'epiWeekChart' && epiWeekChart) epiWeekChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type,
+    data: { labels, datasets: [{ label, data }] },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: type === 'bar' ? { y: { beginAtZero: true, ticks: { precision: 0 } } } : {}
+    }
+  });
+
+  if (canvasId === 'epiWeekChart') epiWeekChart = chart;
+}
+
+function drawObjectChart(canvasId, type, obj, label) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  const labels = Object.keys(obj || {});
+  const data = Object.values(obj || {});
+
+  if (canvasId === 'diseasePieChart' && diseasePieChart) diseasePieChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type,
+    data: { labels, datasets: [{ label, data }] },
+    options: { responsive: true }
+  });
+
+  if (canvasId === 'diseasePieChart') diseasePieChart = chart;
+}
+
+function drawTopVillageChart(items) {
+  const ctx = document.getElementById('villageBarChart');
+  if (!ctx) return;
+  if (villageBarChart) villageBarChart.destroy();
+
+  villageBarChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: items.map(x => x.label),
+      datasets: [{ label: 'จำนวนรายงาน', data: items.map(x => x.value) }]
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderHotspots(items) {
+  if (typeof hotspotRows === 'undefined' || !hotspotRows) return;
+  hotspotRows.innerHTML = items.map((x, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${x.label}</td>
+      <td><b>${x.value}</b></td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" style="text-align:center;color:#64748b">ยังไม่มีข้อมูล hotspot</td></tr>';
+}
+
+async function migratePasswordHashFromUI() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    return Swal.fire('ไม่อนุญาต', 'เฉพาะผู้ดูแลระบบเท่านั้น', 'warning');
+  }
+  const confirm = await Swal.fire({
+    title: 'แปลงรหัสผ่านเป็น SHA-256?',
+    text: 'ระบบจะเข้ารหัส password เดิมทุกบัญชีในชีต users',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'เริ่มแปลง',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังแปลงรหัสผ่าน');
+  const res = await callServer('migratePasswordsToHash');
+  Swal.close();
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+}
+
+
+
+let editingCaseId = null;
+let editingCaseData = null;
+
+async function loadRegisterPage(){
+  await refreshCases(false);
+  renderRegister();
+}
+
+function renderRegister(){
+  if (typeof registerRows === 'undefined' || !registerRows) return;
+
+  const q = (registerSearch?.value || '').toLowerCase();
+  const df = registerDiseaseFilter?.value || '';
+  const sf = registerStatusFilter?.value || '';
+
+  const data = cases.filter(c => {
+    const hitQ = JSON.stringify(c).toLowerCase().includes(q);
+    const hitD = !df || c.disease === df;
+    const hitS = !sf || c.status === sf;
+    return hitQ && hitD && hitS;
+  });
+
+  registerRows.innerHTML = data.map(c => `
+    <tr>
+      <td>${fmt(c.createdAt)}</td>
+      <td>${c.reportNo || ''}</td>
+      <td>${c.disease || ''}</td>
+      <td>${c.patientName || ''}</td>
+      <td>${c.cid || ''}</td>
+      <td>${[c.village, c.moo ? 'หมู่ ' + c.moo : '', c.tambon].filter(Boolean).join(' ')}</td>
+      <td>${statusText(c.status)}</td>
+      <td>${fmt(c.updatedAt)}</td>
+      <td>
+        <button class="btn btn-small btn-ghost" onclick="openEditCase('${c.caseId}')">✏️ แก้ไข</button>
+        <button class="btn btn-small btn-ghost" onclick="viewCaseLogs('${c.caseId}')">🧾 Log</button>
+        <button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">PDF</button>
+        ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด</a>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="9" style="text-align:center;color:#64748b">ยังไม่มีข้อมูลทะเบียนรายงานโรค</td></tr>';
+}
+
+async function openEditCase(caseId){
+  editingCaseId = caseId;
+  loading('กำลังเปิดแบบสอบสวน');
+  const res = await callServer('getCaseById', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('เปิดข้อมูลไม่สำเร็จ', res.message, 'error');
+
+  editingCaseData = res.data || {};
+  const key = editingCaseData.templateKey || inferTemplateKeyFromDisease(editingCaseData.disease);
+  editTemplateKey.value = key || Object.keys(TEMPLATES)[0];
+  renderEditDiseaseForm();
+
+  editCaseInfo.innerHTML = `
+    <b>เลขที่รายงาน:</b> ${editingCaseData.reportNo || '-'} |
+    <b>ผู้ป่วย:</b> ${editingCaseData.patientName || '-'} |
+    <b>โรค:</b> ${editingCaseData.disease || '-'} |
+    <b>ปรับปรุงล่าสุด:</b> ${fmt(editingCaseData.updatedAt)}
+  `;
+
+  fillEditForm(editingCaseData);
+  showPage('editCase');
+}
+
+function inferTemplateKeyFromDisease(disease){
+  disease = String(disease || '');
+  return Object.keys(TEMPLATES).find(k => TEMPLATES[k].label === disease || disease.includes(TEMPLATES[k].label)) || '';
+}
+
+function renderEditDiseaseForm(){
+  const key = editTemplateKey.value;
+  const tmpl = TEMPLATES[key];
+  if (!tmpl) return;
+
+  editDiseaseLabel.value = tmpl.label;
+  let html = '';
+  tmpl.sections.forEach(sec => {
+    html += `<div class="section-title">${sec.title}</div><div class="grid">`;
+    sec.fields.forEach(f => html += renderEditField(f));
+    html += '</div>';
+  });
+  editDynamicForm.innerHTML = html;
+
+  // เติมข้อมูลเดิมอีกครั้งหลังเปลี่ยน template
+  if (editingCaseData) fillEditForm(editingCaseData);
+}
+
+function renderEditField(f){
+  const [id,label,type,opts] = f;
+  const eid = 'edit_' + id;
+  const wide = ['textarea','datetime-local'].includes(type) || ['summary','controlMeasureSummary','riskHistory','diagnosis','labResult','controlMeasure','investigatorTeam'].includes(id);
+  const col = wide ? 'c6' : 'c3';
+
+  if(type === 'textarea') return `<div class="${col} fg"><label>${label}</label><textarea id="${eid}" data-field="${id}"></textarea></div>`;
+
+  if(type === 'select') {
+    const options = (opts || []).map(o => {
+      let v = o, t = o;
+      if(String(o).includes('|')){ const a = String(o).split('|'); v = a[0]; t = a[1]; }
+      return `<option value="${v}">${t}</option>`;
+    }).join('');
+    return `<div class="${col} fg"><label>${label}</label><select id="${eid}" data-field="${id}">${options}</select></div>`;
+  }
+
+  if(type === 'checkbox') {
+    return `<div class="${col} fg"><label>&nbsp;</label><div class="checkwrap"><input id="${eid}" data-field="${id}" type="checkbox"><span>${label}</span></div></div>`;
+  }
+
+  return `<div class="${col} fg"><label>${label}</label><input id="${eid}" data-field="${id}" type="${type || 'text'}"></div>`;
+}
+
+function fillEditForm(data){
+  const inputs = editDynamicForm.querySelectorAll('[data-field]');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    const val = data[field];
+
+    if (el.type === 'checkbox') {
+      el.checked = val === 'ใช่' || val === true || val === 'true';
+    } else {
+      el.value = normalizeForInputValue(el, val);
+    }
+  });
+}
+
+function normalizeForInputValue(el, val){
+  if (val === undefined || val === null) return '';
+  if (el.type === 'date' && String(val).includes('T')) return String(val).slice(0,10);
+  if (el.type === 'datetime-local' && String(val).includes('T')) return String(val).slice(0,16);
+  return val;
+}
+
+function collectEditForm(){
+  const key = editTemplateKey.value;
+  const tmpl = TEMPLATES[key];
+  const payload = { templateKey: key, disease: tmpl.label };
+
+  const inputs = editDynamicForm.querySelectorAll('[data-field]');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    payload[field] = el.type === 'checkbox' ? (el.checked ? 'ใช่' : '') : el.value;
+  });
+
+  return payload;
+}
+
+async function saveEditedCase(){
+  if (!editingCaseId) return Swal.fire('ไม่พบข้อมูล', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  const payload = collectEditForm();
+  if (!payload.patientName) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกชื่อผู้ป่วย', 'warning');
+
+  const confirm = await Swal.fire({
+    title: 'บันทึกการแก้ไข?',
+    text: 'ระบบจะบันทึกทับรายงานเดิม และเก็บ log การแก้ไข',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังบันทึกการแก้ไข');
+  const res = await callServer('updateCase', [editingCaseId, payload, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('บันทึกไม่สำเร็จ', res.message, 'error');
+
+  editingCaseData = Object.assign({}, editingCaseData, payload);
+  await refreshCases(false);
+
+  Swal.fire({
+    icon: 'success',
+    title: 'บันทึกสำเร็จ',
+    html: `<div style="text-align:left"><b>รายการเปลี่ยนแปลง:</b><br>${(res.changed || '').replaceAll(';','<br>')}</div>`
+  });
+}
+
+async function viewCaseLogs(caseId){
+  loading('กำลังโหลดประวัติการแก้ไข');
+  const res = await callServer('getCaseEditLogs', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('โหลด Log ไม่สำเร็จ', res.message, 'error');
+
+  const html = (res.data || []).map(l => `
+    <div style="text-align:left;border-bottom:1px solid #e5e7eb;padding:8px 0">
+      <b>${fmt(l.timestamp)}</b> | ${l.username || ''} | ${l.action || ''}<br>
+      <span style="color:#475569">${l.detail || ''}</span>
+    </div>
+  `).join('') || '<div style="color:#64748b">ยังไม่พบประวัติการแก้ไข</div>';
+
+  Swal.fire({
+    title: '🧾 ประวัติการแก้ไข',
+    html: `<div style="max-height:460px;overflow:auto">${html}</div>`,
+    width: 850,
+    confirmButtonText: 'ปิด'
+  });
+}
+
+function loadCurrentCaseLogs(){
+  if (!editingCaseId) return Swal.fire('ไม่พบข้อมูล', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+  viewCaseLogs(editingCaseId);
+}
+
+
+
+async function loadAIPage(){
+  await checkAIStatus(false);
+}
+
+async function checkAIStatus(show = true){
+  if (show) loading('กำลังตรวจสถานะ AI');
+  const res = await callServer('getOpenAIStatus', [currentUser]);
+  if (show) Swal.close();
+
+  if (!res.ok) {
+    aiStatusBox.innerHTML = 'สถานะ AI: ❌ ' + res.message;
+    return;
+  }
+
+  aiStatusBox.innerHTML = res.configured
+    ? `สถานะ AI: ✅ พร้อมใช้งาน | Model: <b>${res.model}</b> | Key: <b>${res.maskedKey}</b> | Mode: <b>Script Properties</b>`
+    : 'สถานะ AI: ⚠️ ยังไม่ได้ตั้งค่า OPENAI_API_KEY ใน Script Properties';
+
+  if (typeof aiAdminSetupBox !== 'undefined' && aiAdminSetupBox) {
+    aiAdminSetupBox.classList.toggle('hidden', !(currentUser && currentUser.role === 'admin'));
+  }
+}
+
+async function saveOpenAISettings(){
+  if (!openaiApiKeyInput.value.trim()) {
+    return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอก OpenAI API Key', 'warning');
+  }
+
+  const confirm = await Swal.fire({
+    title: 'บันทึก OpenAI API Key?',
+    text: 'ระบบจะเก็บ API Key ใน Script Properties ของ Apps Script',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังบันทึก AI Key');
+  const res = await callServer('setupOpenAI', [openaiApiKeyInput.value.trim(), openaiModelInput.value.trim(), currentUser]);
+  Swal.close();
+
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+  if (res.ok) {
+    openaiApiKeyInput.value = '';
+    checkAIStatus(false);
+  }
+}
+
+async function aiCaseSummary(){
+  if (!editingCaseId) return Swal.fire('ไม่พบรายงาน', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  loading('AI กำลังวิเคราะห์รายเคส...');
+  const res = await callServer('generateAISummaryAdvanced', [editingCaseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+
+  const result = await Swal.fire({
+    title: '🤖 AI สรุปผลการสอบสวน',
+    html: `<textarea id="aiSummaryBox" style="width:100%;height:420px;border:1px solid #ddd;border-radius:12px;padding:12px;font-family:Sarabun,Arial">${res.summary}</textarea>`,
+    width: 900,
+    showCancelButton: true,
+    confirmButtonText: 'นำไปใส่ช่องสรุปรายงาน',
+    cancelButtonText: 'ปิด'
+  });
+
+  if (result.isConfirmed) {
+    const text = document.getElementById('aiSummaryBox').value;
+    const summaryEl = editDynamicForm.querySelector('[data-field="summary"]');
+    if (summaryEl) summaryEl.value = text;
+    Swal.fire('สำเร็จ', 'นำ AI Summary ไปใส่ช่องสรุปรายงานแล้ว กรุณากดบันทึกการแก้ไข', 'success');
+  }
+}
+
+async function aiControlMeasures(){
+  if (!editingCaseId) return Swal.fire('ไม่พบรายงาน', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  loading('AI กำลังเสนอแนะมาตรการควบคุมโรค...');
+  const res = await callServer('generateAIControlMeasures', [editingCaseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+
+  const result = await Swal.fire({
+    title: '🛡️ AI มาตรการควบคุมโรค',
+    html: `<textarea id="aiControlBox" style="width:100%;height:420px;border:1px solid #ddd;border-radius:12px;padding:12px;font-family:Sarabun,Arial">${res.result}</textarea>`,
+    width: 900,
+    showCancelButton: true,
+    confirmButtonText: 'นำไปใส่ช่องมาตรการ',
+    cancelButtonText: 'ปิด'
+  });
+
+  if (result.isConfirmed) {
+    const text = document.getElementById('aiControlBox').value;
+    const controlEl = editDynamicForm.querySelector('[data-field="controlMeasureSummary"]') || editDynamicForm.querySelector('[data-field="controlMeasure"]');
+    if (controlEl) controlEl.value = text;
+    Swal.fire('สำเร็จ', 'นำมาตรการจาก AI ไปใส่ในแบบสอบสวนแล้ว กรุณากดบันทึกการแก้ไข', 'success');
+  }
+}
+
+async function aiCluster(){
+  loading('AI กำลังวิเคราะห์ Cluster...');
+  const res = await callServer('analyzeClusterAI', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+async function aiRisk(){
+  loading('AI กำลังวิเคราะห์ Risk Pattern...');
+  const res = await callServer('analyzeRiskPatternAI', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+async function aiExecutiveReport(){
+  loading('AI กำลังเขียนรายงานผู้บริหาร...');
+  const res = await callServer('generateAIExecutiveReport', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI สร้างรายงานไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+function copyAIOutput(){
+  const text = aiOutput.value || '';
+  if (!text) return Swal.fire('ไม่มีข้อความ', 'ยังไม่มีผลวิเคราะห์ให้คัดลอก', 'info');
+  navigator.clipboard.writeText(text).then(
+    () => Swal.fire('คัดลอกแล้ว', 'คัดลอกผลวิเคราะห์ AI แล้ว', 'success'),
+    () => Swal.fire('คัดลอกไม่สำเร็จ', 'กรุณาเลือกข้อความแล้วคัดลอกเอง', 'warning')
+  );
+}
+
+
+
+async function clearOpenAISettings(){
+  const confirm = await Swal.fire({
+    title: 'ลบ OpenAI API Key?',
+    text: 'ระบบจะลบค่า OPENAI_API_KEY ออกจาก Script Properties',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ลบ',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังลบ API Key');
+  const res = await callServer('clearOpenAIKey', [currentUser]);
+  Swal.close();
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+  checkAIStatus(false);
+}
+
+</script>
+  <style>
+    :root{--primary:#6d28d9;--primary2:#8b5cf6;--cyan:#06b6d4;--bg:#f8fafc;--text:#0f172a;--muted:#64748b;--line:#e5e7eb;--shadow:0 24px 70px rgba(76,29,149,.15)}
+    *{box-sizing:border-box} body{margin:0;font-family:'Sarabun',sans-serif;color:var(--text);background:radial-gradient(circle at 0 0,#ddd6fe,transparent 35%),radial-gradient(circle at 100% 10%,#cffafe,transparent 30%),linear-gradient(135deg,#f8fafc,#f5f3ff)} .hidden{display:none!important}
+    .auth{min-height:100vh;display:grid;grid-template-columns:1.1fr .9fr} .hero{padding:58px;color:white;background:linear-gradient(135deg,#32106f,#6d28d9,#0891b2);display:flex;flex-direction:column;justify-content:space-between;overflow:hidden} .brand{display:flex;gap:12px;align-items:center;font-size:22px;font-weight:800} .logo{width:54px;height:54px;border-radius:18px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-size:28px} .hero h1{font-size:46px;line-height:1.15;margin:0 0 18px} .hero p{font-size:18px;line-height:1.75;opacity:.92}
+    .features{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:28px} .feature{border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.13);border-radius:22px;padding:16px;backdrop-filter:blur(18px)}
+    .auth-side{display:flex;align-items:center;justify-content:center;padding:28px} .card{background:rgba(255,255,255,.86);border:1px solid rgba(255,255,255,.9);backdrop-filter:blur(22px);border-radius:32px;box-shadow:var(--shadow);padding:28px;width:100%;max-width:500px} .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#ede9fe;border-radius:20px;padding:6px;margin-bottom:22px} .tab{border:0;background:transparent;border-radius:16px;padding:11px;font-family:inherit;font-weight:800;color:#5b21b6;cursor:pointer} .tab.active{background:#fff;color:#312e81;box-shadow:0 10px 22px rgba(91,33,182,.12)}
+    h2{font-size:28px;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 20px} label{display:block;font-size:13px;font-weight:800;color:#334155;margin:0 0 7px} .fg{margin-bottom:14px} input,select,textarea{width:100%;border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:13px 14px;font-family:inherit;font-size:15px;outline:none} textarea{min-height:95px;resize:vertical} input:focus,select:focus,textarea:focus{border-color:#8b5cf6;box-shadow:0 0 0 4px rgba(139,92,246,.13)} .btn{border:0;border-radius:17px;padding:12px 16px;font-family:inherit;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px} .btn-primary{width:100%;color:white;background:linear-gradient(135deg,#6d28d9,#8b5cf6,#06b6d4);box-shadow:0 16px 30px rgba(109,40,217,.24)} .btn-ghost{background:#f1f5f9;color:#4c1d95} .btn-small{font-size:13px;padding:8px 10px;border-radius:12px} .hint{font-size:13px;color:#64748b;line-height:1.7;background:#f8fafc;border:1px dashed #c4b5fd;border-radius:16px;padding:12px;margin-top:14px}
+    .app{display:grid;grid-template-columns:292px 1fr;min-height:100vh} .side{height:100vh;position:sticky;top:0;background:#24115f;color:white;padding:22px;overflow:auto} .side-title{display:flex;gap:12px;align-items:center;font-weight:800;margin-bottom:20px} .menu{display:flex;flex-direction:column;gap:8px} .menu button{border:0;background:transparent;color:#e9d5ff;text-align:left;border-radius:16px;padding:13px 14px;font-family:inherit;font-weight:800;cursor:pointer} .menu button.active,.menu button:hover{background:rgba(255,255,255,.14);color:white}
+    .main{padding:24px} .top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:22px} .top h2{margin:0} .top p{margin:4px 0 0;color:#64748b} .user{background:#fff;border:1px solid #eef2ff;border-radius:20px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 12px 30px rgba(15,23,42,.06)} .avatar{width:38px;height:38px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:white;font-weight:900}
+    .panel{background:#fff;border:1px solid #eef2ff;border-radius:26px;padding:22px;box-shadow:0 16px 45px rgba(15,23,42,.06);margin-bottom:18px} .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px} .c3{grid-column:span 3} .c4{grid-column:span 4} .c6{grid-column:span 6} .c12{grid-column:span 12} .stat{background:linear-gradient(135deg,#fff,#f5f3ff);border:1px solid #ede9fe;border-radius:24px;padding:20px} .stat span{display:block;color:#64748b} .stat b{font-size:30px} table{width:100%;border-collapse:collapse} th,td{padding:12px;border-bottom:1px solid #eef2ff;text-align:left;font-size:14px;vertical-align:top} th{background:#f5f3ff;color:#4c1d95} .section-title{margin:18px 0 12px;padding:12px 14px;border-radius:16px;background:#f5f3ff;color:#4c1d95;font-weight:900} .checkwrap{display:flex;gap:8px;align-items:center;background:#f8fafc;padding:13px 14px;border-radius:17px;border:1px solid #e2e8f0} .checkwrap input{width:auto} .template-note{background:#ecfeff;border:1px solid #a5f3fc;color:#155e75;border-radius:18px;padding:12px;margin:12px 0}
+    @media(max-width:900px){.auth{grid-template-columns:1fr}.hero{display:none}.auth-side{padding:16px}.app{grid-template-columns:1fr}.side{height:auto;position:relative}.main{padding:14px}.top{flex-direction:column;align-items:stretch}.grid{grid-template-columns:1fr}.c3,.c4,.c6,.c12{grid-column:span 1}}
+  </style>
+</head>
+<body>
+<section id="authPage" class="auth">
+  <div class="hero">
+    <div class="brand"><div class="logo">🦠</div><div>R506+ Investigation</div></div>
+    <div><h1>แบบสอบสวนโรค<br>ตรงตามไฟล์กองระบาดวิทยา</h1><p>เลือกโรคแล้วระบบจะแสดงฟอร์มเฉพาะโรค พร้อมบันทึกลง Google Sheet และดึงข้อมูลกลับมาแสดง Dashboard</p><div class="features"><div class="feature"><b>🧾 Disease Specific Forms</b><br>ฟอร์มแยกตามโรค</div><div class="feature"><b>📊 Dashboard</b><br>สรุปจาก Sheet</div><div class="feature"><b>🔐 Login</b><br>admin/staff</div><div class="feature"><b>📎 Evidence Ready</b><br>รองรับ URL ภาพ/ PDF</div></div></div>
+    <small>รพ.สต.บ้านคำใหญ่ • งานควบคุมโรค • สสอ.ห้วยเม็ก</small>
+  </div>
+  <div class="auth-side"><div class="card">
+    <div class="tabs"><button class="tab active" onclick="switchAuth('login',this)">เข้าสู่ระบบ</button><button class="tab" onclick="switchAuth('register',this)">สมัครใช้งาน</button><button class="tab" onclick="switchAuth('forgot',this)">ลืมรหัสผ่าน</button></div>
+    <div id="loginForm"><h2>ยินดีต้อนรับ 👋</h2><p class="sub">เข้าสู่ระบบเพื่อบันทึกแบบสอบสวนโรค</p><div class="fg"><label>ชื่อผู้ใช้</label><input id="loginUsername" placeholder="admin"></div><div class="fg"><label>รหัสผ่าน</label><input id="loginPassword" type="password" placeholder="admin1234"></div><button class="btn btn-primary" onclick="doLogin()">🔐 เข้าสู่ระบบ</button><button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="testConnection()">🧪 ทดสอบเชื่อม Google Sheet</button><div class="hint">บัญชีเริ่มต้น: <b>admin / admin1234</b></div></div>
+    <div id="registerForm" class="hidden"><h2>สมัครใช้งาน ✨</h2><p class="sub">รอผู้ดูแลอนุมัติก่อนใช้งาน</p><div class="fg"><label>ชื่อ-สกุล</label><input id="regFullname"></div><div class="fg"><label>ตำแหน่ง</label><input id="regPosition"></div><div class="fg"><label>เบอร์โทร</label><input id="regPhone"></div><div class="fg"><label>อีเมล</label><input id="regEmail"></div><div class="fg"><label>ชื่อผู้ใช้</label><input id="regUsername"></div><div class="fg"><label>รหัสผ่าน</label><input id="regPassword" type="password"></div><button class="btn btn-primary" onclick="doRegister()">📝 สมัครใช้งาน</button></div>
+    <div id="forgotForm" class="hidden"><h2>ลืมรหัสผ่าน 🔑</h2><p class="sub">ขอรหัสยืนยัน 6 หลัก</p><div class="fg"><label>ชื่อผู้ใช้หรืออีเมล</label><input id="forgotIdentifier"></div><button class="btn btn-primary" onclick="doForgot()">📩 ขอรหัสยืนยัน</button><div id="resetBox" class="hidden" style="margin-top:14px"><div class="fg"><label>รหัสยืนยัน</label><input id="resetToken"></div><div class="fg"><label>รหัสผ่านใหม่</label><input id="newPassword" type="password"></div><button class="btn btn-primary" onclick="doReset()">✅ เปลี่ยนรหัสผ่าน</button></div></div>
+  </div></div>
+</section>
+
+<section id="appPage" class="app hidden">
+  <aside class="side"><div class="side-title"><div class="logo">🦠</div><div>สอบสวนโรค<br><small>บ้านคำใหญ่</small></div></div><div class="menu">
+    <button class="active" onclick="showPage('dashboard',this)">📊 Dashboard</button>
+    <button onclick="showPage('form',this)">🧾 แบบสอบสวนตามโรค</button>
+    <button onclick="showPage('list',this); refreshCases()">📋 ดึงข้อมูลจาก Sheet</button>
+    <button onclick="showPage('register',this); loadRegisterPage()">📚 ทะเบียนรายงานโรค</button>
+    <button onclick="showPage('ai',this); loadAIPage()">🤖 AI Epidemiologist</button>
+    <button onclick="showPage('pdfReport',this); loadPdfReportPage()">🧾 ออกรายงาน PDF ราชการ</button>
+    <button id="userMenu" onclick="showPage('users',this); loadUsers()">👥 จัดการผู้ใช้</button>
+    <button id="logMenu" onclick="showPage('logs',this); loadLogs()">🧾 Log</button>
+    <button id="auditMenu" onclick="showPage('audit',this); loadAuditDashboard()">📊 Audit Dashboard</button>
+    <button onclick="refreshCases()">🔄 รีเฟรชข้อมูล</button>
+    <button id="hashMenu" onclick="migratePasswordHashFromUI()">🔐 Hash Password</button>
+    <button onclick="openChangePassword()">🔑 เปลี่ยนรหัสผ่าน</button>
+    <button onclick="doLogout()">🚪 ออกจากระบบ</button>
+  </div></aside>
+  <main class="main">
+    <div class="top"><div><h2 id="pageTitle">Dashboard</h2><p>แบบสอบสวนโรคเฉพาะรายตามไฟล์อ้างอิง</p></div><div class="user"><div class="avatar" id="avatar">A</div><div><b id="userFullname">Admin</b><br><small id="userRole">admin</small></div></div></div>
+
+    <div id="dashboardPage">
+      <div class="grid">
+        <div class="c3"><div class="stat"><span>รายงานทั้งหมด</span><b id="statAll">0</b></div></div>
+        <div class="c3"><div class="stat"><span>ร่างรายงาน</span><b id="statDraft">0</b></div></div>
+        <div class="c3"><div class="stat"><span>พร้อมส่ง</span><b id="statReady">0</b></div></div>
+        <div class="c3"><div class="stat"><span>ชนิดโรค</span><b id="statDisease">0</b></div></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <h3>📈 Epi Curve รายสัปดาห์</h3>
+            <p class="sub">ใช้วันเริ่มป่วยเป็นหลัก หากไม่มีจะใช้วันที่รับแจ้ง/สอบสวน/วันที่บันทึก</p>
+          </div>
+          <button class="btn btn-ghost" onclick="loadEpiDashboard()">🔄 อัปเดต Epi Dashboard</button>
+        </div>
+        <canvas id="epiWeekChart" height="120"></canvas>
+      </div>
+
+      <div class="grid">
+        <div class="c6">
+          <div class="panel">
+            <h3>🦠 สัดส่วนโรคที่รายงาน</h3>
+            <canvas id="diseasePieChart" height="150"></canvas>
+          </div>
+        </div>
+        <div class="c6">
+          <div class="panel">
+            <h3>🏘️ Top พื้นที่/หมู่บ้าน</h3>
+            <canvas id="villageBarChart" height="150"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>🔥 Hotspot โรค x พื้นที่</h3>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>ลำดับ</th><th>โรค | พื้นที่</th><th>จำนวนรายงาน</th></tr></thead>
+            <tbody id="hotspotRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="formPage" class="hidden"><div class="panel">
+      <h3>🧾 แบบสอบสวนโรคเฉพาะราย</h3>
+      <div class="template-note">เลือกโรคก่อน ระบบจะแสดงหัวข้อและช่องกรอกให้ตรงกับแบบสอบสวนโรคนั้น ๆ</div>
+      <div class="grid"><div class="c6 fg"><label>เลือกแบบสอบสวนโรค</label><select id="templateKey" onchange="renderDiseaseForm()"></select></div><div class="c6 fg"><label>ชื่อแบบสอบสวน</label><input id="diseaseLabel" readonly></div></div>
+      <div id="dynamicForm"></div>
+      <button class="btn btn-primary" onclick="saveCase()">💾 บันทึกแบบสอบสวนลง Google Sheet</button>
+    </div></div>
+
+    <div id="listPage" class="hidden"><div class="panel"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><h3>📋 รายงานจาก Google Sheet</h3><button class="btn btn-ghost" onclick="refreshCases()">🔄 ดึงข้อมูลล่าสุด</button></div><div class="grid"><div class="c6 fg"><input id="caseSearch" placeholder="ค้นหา ชื่อผู้ป่วย / CID / โรค / หมู่" oninput="renderCases()"></div><div class="c6 fg"><select id="diseaseFilter" onchange="renderCases()"><option value="">ทุกโรค</option></select></div></div><div style="overflow:auto"><table><thead><tr><th>วันที่</th><th>แบบสอบสวน</th><th>ชื่อผู้ป่วย</th><th>CID</th><th>หมู่</th><th>สถานะ</th><th>ผู้บันทึก</th><th>PDF</th></tr></thead><tbody id="caseRows"></tbody></table></div></div></div>
+    
+    
+    
+    <div id="aiPage" class="hidden">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+          <div>
+            <h3>🤖 AI Epidemiologist Level 2</h3>
+            <p class="sub">วิเคราะห์รายเคส, Cluster, Risk Pattern และเขียนรายงานแบบนักระบาดวิทยาด้วย OpenAI API</p>
+          </div>
+          <button class="btn btn-ghost" onclick="checkAIStatus()">🔎 ตรวจสถานะ AI</button>
+        </div>
+
+        <div class="template-note">
+          <b>โหมดแนะนำ:</b> ตั้งค่า API Key ผ่าน <b>Apps Script → Project Settings → Script Properties</b><br>
+          เพิ่มค่า <b>OPENAI_API_KEY</b> และ <b>OPENAI_MODEL</b> เช่น <b>gpt-4o-mini</b><br>
+          หน้าเว็บจะแสดงเฉพาะสถานะและ masked key เพื่อความปลอดภัย
+        </div>
+
+        <div id="aiStatusBox" class="hint">สถานะ AI: ยังไม่ได้ตรวจสอบ</div>
+
+        <div id="aiAdminSetupBox" class="hidden" style="margin-top:14px">
+          <details>
+            <summary style="cursor:pointer;font-weight:800;color:#4c1d95">🔐 ตั้งค่า API Key ผ่านหน้าเว็บ เฉพาะ admin</summary>
+            <div class="template-note" style="margin-top:10px">
+              ใช้เฉพาะกรณีจำเป็น/ทดสอบระบบเท่านั้น สำหรับ production แนะนำตั้งที่ Script Properties โดยตรง
+            </div>
+            <div class="grid">
+              <div class="c6 fg"><label>OpenAI API Key</label><input id="openaiApiKeyInput" type="password" placeholder="sk-..."></div>
+              <div class="c3 fg"><label>Model</label><input id="openaiModelInput" value="gpt-4o-mini"></div>
+              <div class="c3 fg"><label>&nbsp;</label><button class="btn btn-primary" onclick="saveOpenAISettings()">💾 บันทึก</button></div>
+            </div>
+            <button class="btn btn-ghost" onclick="clearOpenAISettings()">🗑️ ลบ API Key</button>
+          </details>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="c6">
+          <div class="panel">
+            <h3>🔥 วิเคราะห์ Cluster</h3>
+            <p class="sub">วิเคราะห์โรคเดียวกัน พื้นที่ใกล้กัน และช่วงเวลาใกล้กันจากทะเบียนล่าสุด</p>
+            <button class="btn btn-primary" onclick="aiCluster()">🔥 วิเคราะห์ Cluster</button>
+          </div>
+        </div>
+        <div class="c6">
+          <div class="panel">
+            <h3>⚠️ วิเคราะห์ Risk Pattern</h3>
+            <p class="sub">ค้นหารูปแบบปัจจัยเสี่ยง กลุ่มเสี่ยง พื้นที่เสี่ยง และข้อเสนอแนะ</p>
+            <button class="btn btn-primary" onclick="aiRisk()">⚠️ วิเคราะห์ความเสี่ยง</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>📋 รายงานสรุปสถานการณ์สำหรับผู้บริหาร</h3>
+        <p class="sub">ให้ AI เขียนรายงานภาพรวมสถานการณ์โรคติดต่อในพื้นที่ สำหรับเสนอ สสอ./ที่ประชุม</p>
+        <button class="btn btn-primary" onclick="aiExecutiveReport()">📋 สร้างรายงานผู้บริหาร</button>
+      </div>
+
+      <div class="panel">
+        <h3>🧠 ผลวิเคราะห์ AI</h3>
+        <textarea id="aiOutput" style="min-height:360px" placeholder="ผลวิเคราะห์จาก AI จะแสดงที่นี่"></textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-ghost" onclick="copyAIOutput()">📋 คัดลอกผลวิเคราะห์</button>
+          <button class="btn btn-ghost" onclick="aiOutput.value=''">🧹 ล้างผลลัพธ์</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="registerPage" class="hidden">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+          <div>
+            <h3>📚 ทะเบียนแสดงแบบรายงานโรค</h3>
+            <p class="sub">แสดงรายการแบบสอบสวนทั้งหมดจาก Google Sheet สามารถเปิดดู แก้ไข ปรับปรุงรายละเอียด และบันทึกประวัติการแก้ไขเป็น Log</p>
+          </div>
+          <button class="btn btn-ghost" onclick="loadRegisterPage()">🔄 โหลดทะเบียนล่าสุด</button>
+        </div>
+
+        <div class="grid">
+          <div class="c4 fg"><label>ค้นหา</label><input id="registerSearch" placeholder="ชื่อผู้ป่วย / CID / โรค / เลขที่รายงาน / หมู่บ้าน" oninput="renderRegister()"></div>
+          <div class="c4 fg"><label>กรองโรค</label><select id="registerDiseaseFilter" onchange="renderRegister()"><option value="">ทุกโรค</option></select></div>
+          <div class="c4 fg"><label>กรองสถานะ</label><select id="registerStatusFilter" onchange="renderRegister()"><option value="">ทุกสถานะ</option><option value="draft">ร่างรายงาน</option><option value="ready">พร้อมส่ง</option><option value="sent">ส่งแล้ว</option></select></div>
+        </div>
+
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>วันที่บันทึก</th>
+                <th>เลขที่รายงาน</th>
+                <th>โรค/แบบสอบสวน</th>
+                <th>ชื่อผู้ป่วย</th>
+                <th>CID</th>
+                <th>พื้นที่</th>
+                <th>สถานะ</th>
+                <th>ปรับปรุงล่าสุด</th>
+                <th>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="registerRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="editCasePage" class="hidden">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+          <div>
+            <h3>✏️ แก้ไขแบบสอบสวนโรค</h3>
+            <p class="sub">แก้ไขข้อมูลรายงานเดิม ระบบจะบันทึกทับแถวเดิมใน Google Sheet และเก็บ Log การแก้ไข</p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="showPage('register')">⬅️ กลับทะเบียน</button>
+            <button class="btn btn-ghost" onclick="loadCurrentCaseLogs()">🧾 ประวัติแก้ไข</button>
+            <button class="btn btn-ghost" onclick="aiCaseSummary()">🤖 AI สรุปรายเคส</button>
+            <button class="btn btn-ghost" onclick="aiControlMeasures()">🛡️ AI มาตรการ</button>
+          </div>
+        </div>
+
+        <div class="template-note" id="editCaseInfo">กำลังโหลดข้อมูล...</div>
+
+        <div class="grid">
+          <div class="c6 fg"><label>แบบสอบสวนโรค</label><select id="editTemplateKey" onchange="renderEditDiseaseForm()"></select></div>
+          <div class="c6 fg"><label>ชื่อแบบสอบสวน</label><input id="editDiseaseLabel" readonly></div>
+        </div>
+
+        <div id="editDynamicForm"></div>
+
+        <div class="grid">
+          <div class="c6"><button class="btn btn-primary" onclick="saveEditedCase()">💾 บันทึกการแก้ไข</button></div>
+          <div class="c6"><button class="btn btn-ghost" style="width:100%" onclick="createPdf(editingCaseId)">🧾 สร้าง PDF หลังแก้ไข</button></div>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="pdfReportPage" class="hidden">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+          <div>
+            <h3>🧾 ออกรายงาน PDF แบบฟอร์มสอบสวนตรงราชการ 100%</h3>
+            <p class="sub">เลือกเคสที่บันทึกไว้ แล้วสร้าง PDF A4 สำหรับพิมพ์/นำส่ง สสอ.ห้วยเม็ก พร้อมบันทึก URL กลับลง Google Sheet</p>
+          </div>
+          <button class="btn btn-ghost" onclick="refreshCases()">🔄 ดึงข้อมูลล่าสุด</button>
+        </div>
+        <div class="template-note">PDF จะจัดรูปแบบเป็นเอกสารราชการ มีหัวรายงาน ข้อมูลผู้ป่วย ข้อมูลการป่วย ข้อมูลเฉพาะโรค มาตรการควบคุมโรค สรุปผล และส่วนลงนามทีมสอบสวนโรค</div>
+        <div class="grid">
+          <div class="c6 fg"><label>ค้นหา</label><input id="pdfSearch" placeholder="ค้นหาชื่อผู้ป่วย / CID / เลขที่รายงาน / โรค" oninput="renderPdfReports()"></div>
+          <div class="c6 fg"><label>กรองโรค</label><select id="pdfDiseaseFilter" onchange="renderPdfReports()"><option value="">ทุกโรค</option></select></div>
+        </div>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>วันที่บันทึก</th><th>เลขที่รายงาน</th><th>แบบสอบสวน</th><th>ชื่อผู้ป่วย</th><th>CID</th><th>สถานะ</th><th>PDF ราชการ</th>
+              </tr>
+            </thead>
+            <tbody id="pdfRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="auditPage" class="hidden">
+      <div class="grid">
+        <div class="c3"><div class="stat"><span>Log ทั้งหมด</span><b id="auditTotal">0</b></div></div>
+        <div class="c3"><div class="stat"><span>Login สำเร็จ</span><b id="auditLogin">0</b></div></div>
+        <div class="c3"><div class="stat"><span>Login ไม่สำเร็จ</span><b id="auditFailed">0</b></div></div>
+        <div class="c3"><div class="stat"><span>สร้าง PDF</span><b id="auditPdf">0</b></div></div>
+      </div>
+      <div class="grid">
+        <div class="c6"><div class="panel"><h3>📌 กิจกรรมตามประเภท</h3><canvas id="auditActionChart" height="140"></canvas></div></div>
+        <div class="c6"><div class="panel"><h3>👤 กิจกรรมตามผู้ใช้</h3><canvas id="auditUserChart" height="140"></canvas></div></div>
+      </div>
+      <div class="panel"><h3>🧾 Log ล่าสุด</h3><div style="overflow:auto"><table><thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>Role</th><th>Action</th><th>รายละเอียด</th></tr></thead><tbody id="auditRows"></tbody></table></div></div>
+    </div>
+
+    <div id="usersPage" class="hidden"><div class="panel"><h3>👥 จัดการผู้ใช้งาน</h3><div style="overflow:auto"><table><thead><tr><th>Username</th><th>ชื่อ</th><th>ตำแหน่ง</th><th>Role</th><th>Status</th><th>จัดการ</th></tr></thead><tbody id="userRows"></tbody></table></div></div></div>
+    <div id="logsPage" class="hidden"><div class="panel"><h3>🧾 Log การใช้งาน</h3><div style="overflow:auto"><table><thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>Role</th><th>Action</th><th>รายละเอียด</th></tr></thead><tbody id="logRows"></tbody></table></div></div></div>
+  </main>
+</section>
+
+<script>
+let currentUser=null, cases=[], chart=null;
+const TEMPLATES = {"HFMD": {"label": "โรคมือ เท้า ปาก / Enterovirus", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["ageMonth", "อายุ (เดือน)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["religion", "ศาสนา", "text"], ["nationality", "สัญชาติ", "text"], ["occupation", "อาชีพ", "text"], ["workplace", "ที่ทำงาน/โรงเรียน", "text"], ["schoolClass", "ชั้นเรียน", "text"], ["phone", "โทรศัพท์", "text"], ["address", "บ้านเลขที่", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["road", "ถนน/ซอย", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["municipality", "เขตการปกครอง", "select", ["เทศบาลนคร", "เทศบาลเมือง", "เทศบาลตำบล", "อบต."]], ["sameResidence", "ภูมิลำเนาเดียวกับที่อยู่ขณะป่วยหรือไม่", "select", ["ใช่", "ไม่ใช่"]]]}, {"title": "2. ข้อมูลการป่วย/อาการ", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["firstVisitDate", "วันที่ไปรับการรักษาครั้งแรก", "date"], ["admitDate", "วันที่รับไว้รักษา", "date"], ["diagnosis", "การวินิจฉัย", "textarea"], ["symptomFever", "ไข้", "checkbox"], ["symptomMouthUlcer", "แผล/ตุ่มในปาก", "checkbox"], ["symptomRashHand", "ผื่น/ตุ่มที่มือ", "checkbox"], ["symptomRashFoot", "ผื่น/ตุ่มที่เท้า", "checkbox"], ["symptomButtock", "ผื่นบริเวณก้น", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["complication", "ภาวะแทรกซ้อน", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "กำลังรักษา", "เสียชีวิต"]]]}, {"title": "3. ประวัติเสี่ยง/การสัมผัส", "fields": [["contactCase", "มีประวัติสัมผัสผู้ป่วยโรคมือเท้าปาก/ไข้เอนเทอโรไวรัส", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["schoolCluster", "มีผู้ป่วยในโรงเรียน/ศูนย์เด็กเล็กเดียวกัน", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["travelHistory", "ประวัติเดินทาง/ไปสถานที่เสี่ยงใน 7 วันก่อนป่วย", "textarea"], ["riskPlace", "สถานที่คาดว่าได้รับเชื้อ", "textarea"]]}, {"title": "4. การควบคุมโรค", "fields": [["controlIsolation", "แยกผู้ป่วย/หยุดเรียน", "checkbox"], ["controlClean", "ทำความสะอาดของเล่น/พื้นผิว", "checkbox"], ["controlScreening", "คัดกรองเด็กป่วยในศูนย์เด็ก/โรงเรียน", "checkbox"], ["controlHealthEdu", "ให้สุขศึกษา", "checkbox"], ["controlOther", "มาตรการอื่น ๆ", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "SARI_AI2": {"label": "ไข้หวัดใหญ่/SARI_AI 2", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["ageMonth", "อายุ (เดือน)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["occupation", "อาชีพ/ลักษณะงาน", "textarea"], ["workplace", "สถานที่ทำงาน", "text"], ["workTambon", "ตำบลที่ทำงาน", "text"], ["workAmphoe", "อำเภอที่ทำงาน", "text"], ["workProvince", "จังหวัดที่ทำงาน", "text"], ["workPhone", "โทรศัพท์ที่ทำงาน", "text"], ["religion", "ศาสนา", "text"], ["ethnicity", "เชื้อชาติ", "text"], ["phone", "โทรศัพท์", "text"], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["sameResidence", "ภูมิลำเนาเดียวกับที่อยู่ขณะป่วยหรือไม่", "select", ["ใช่", "ไม่ใช่"]], ["schoolName", "สถานศึกษา (ถ้ามี)", "text"], ["schoolClass", "ระดับชั้น", "text"]]}, {"title": "2. ข้อมูลทางคลินิก", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["reportedDate", "วันที่รายงาน", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["admitDate", "วันที่รับไว้รักษา", "date"], ["symptomFever", "ไข้", "checkbox"], ["symptomCough", "ไอ", "checkbox"], ["symptomSoreThroat", "เจ็บคอ", "checkbox"], ["symptomRunnyNose", "น้ำมูก", "checkbox"], ["symptomDyspnea", "หอบเหนื่อย/หายใจลำบาก", "checkbox"], ["symptomPneumonia", "ปอดอักเสบ", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["diagnosis", "การวินิจฉัยแพทย์", "textarea"], ["xray", "ผลเอกซเรย์ปอด", "textarea"], ["treatment", "การรักษา/ยาต้านไวรัส", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. ประวัติเสี่ยง 14 วันก่อนป่วย", "fields": [["travelHistory", "ประวัติเดินทาง", "textarea"], ["animalContact", "สัมผัสสัตว์ปีก/นก/สัตว์ป่วยตาย", "textarea"], ["contactARI", "สัมผัสผู้ป่วยทางเดินหายใจ", "textarea"], ["healthcareWorker", "เป็นบุคลากรทางการแพทย์/สัมผัสผู้ป่วยหรือไม่", "select", ["ใช่", "ไม่ใช่"]], ["cluster", "มีผู้ป่วยเป็นกลุ่มก้อนหรือไม่", "select", ["มี", "ไม่มี", "ไม่ทราบ"]]]}, {"title": "4. การเก็บตัวอย่าง/ผล Lab", "fields": [["specimenType", "ชนิดตัวอย่าง", "select", ["Nasopharyngeal swab", "Throat swab", "Sputum", "อื่น ๆ"]], ["specimenDate", "วันที่เก็บตัวอย่าง", "date"], ["labSendDate", "วันที่ส่งตรวจ", "date"], ["labResult", "ผลตรวจทางห้องปฏิบัติการ", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "SARI_AI1": {"label": "แบบรายงานผู้ป่วย SARI_AI 1", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "ส่วนรายงานหน่วยงาน", "fields": [["fromUnit", "จากหน่วยงาน", "text"], ["toUnit", "ถึงหน่วยงาน", "text"], ["reportDateTime", "วันที่/เวลารายงาน", "datetime-local"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientName", "ชื่อ-สกุล", "text"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["ageYear", "อายุ (ปี)", "number"], ["occupation", "อาชีพ/ลักษณะงาน", "textarea"], ["nationality", "สัญชาติ", "text"], ["ethnicity", "เชื้อชาติ", "text"], ["contactAddressType", "ที่อยู่ที่ติดตามได้", "select", ["บ้าน", "อื่น ๆ"]], ["address", "เลขที่", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. ข้อมูลการป่วยเบื้องต้น", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["diagnosis", "การวินิจฉัย/อาการสำคัญ", "textarea"], ["hospital", "สถานพยาบาลที่รักษา", "text"], ["labResult", "ผลตรวจเบื้องต้น", "textarea"], ["riskHistory", "ประวัติเสี่ยง", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "DENGUE": {"label": "โรคไข้เลือดออก", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["ageMonth", "อายุ (เดือน)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["religion", "ศาสนา", "text"], ["nationality", "สัญชาติ", "text"], ["occupation", "อาชีพ", "text"], ["workplace", "ที่ทำงาน/โรงเรียน", "text"], ["schoolClass", "ชั้นเรียน", "text"], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"], ["sameResidence", "ภูมิลำเนาเดียวกับที่อยู่ขณะป่วยหรือไม่", "select", ["ใช่", "ไม่ใช่"]]]}, {"title": "2. อาการและการรักษา", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["firstVisitDate", "วันที่รักษาครั้งแรก", "date"], ["admitDate", "วันที่ Admit", "date"], ["diagnosis", "Diagnosis", "select", ["DF", "DHF", "DSS", "อื่น ๆ"]], ["symptomFever", "ไข้", "checkbox"], ["symptomHeadache", "ปวดศีรษะ", "checkbox"], ["symptomMyalgia", "ปวดเมื่อยกล้ามเนื้อ", "checkbox"], ["symptomRash", "ผื่น", "checkbox"], ["symptomBleeding", "เลือดออก", "checkbox"], ["symptomShock", "ช็อก", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["platelet", "Platelet", "text"], ["hct", "Hct", "text"], ["labResult", "ผล NS1/IgM/IgG/อื่น ๆ", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. การสอบสวนแหล่งโรค/ควบคุมยุงลาย", "fields": [["riskPlace", "สถานที่คาดว่าได้รับเชื้อ", "textarea"], ["mosquitoIndex", "ค่า HI/CI หรือผลสำรวจลูกน้ำ", "textarea"], ["contactCases", "ผู้ป่วยรายอื่นในบ้าน/ชุมชน", "textarea"], ["controlLarva", "ทำลายแหล่งเพาะพันธุ์", "checkbox"], ["controlSpray", "พ่นสารเคมี", "checkbox"], ["controlRepellent", "แจกทรายอะเบท/โลชั่น/มุ้ง", "checkbox"], ["controlEdu", "ประชาสัมพันธ์/สุขศึกษา", "checkbox"], ["controlOther", "มาตรการอื่น ๆ", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "LEPTO": {"label": "โรคเลปโตสไปโรสิส", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป/เศรษฐสังคม", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["ageMonth", "อายุ (เดือน)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["religion", "ศาสนา", "text"], ["nationality", "สัญชาติ", "text"], ["occupation", "อาชีพ", "text"], ["education", "ระดับการศึกษาสูงสุด", "select", ["ไม่เคยเรียน", "ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา/อนุปริญญา", "ปริญญาตรี", "สูงกว่าปริญญาตรี"]], ["income", "รายได้เฉลี่ยต่อครัวเรือน/เดือน", "select", ["<10,000 บาท", "10,000-25,000 บาท", ">25,000 บาท"]], ["housing", "ลักษณะที่อยู่อาศัย", "text"], ["ownership", "ลักษณะการครอบครองที่อยู่อาศัย", "select", ["เจ้าของ", "เช่าซื้อ", "เช่า", "อยู่โดยไม่เสียค่าเช่า", "อื่น ๆ"]], ["treatmentRight", "สิทธิการรักษา", "select", ["ไม่มีสิทธิ", "ประกันสังคม", "หลักประกันสุขภาพถ้วนหน้า", "สิทธิข้าราชการ", "อื่น ๆ"]], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. อาการ/การรักษา", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["diagnosis", "การวินิจฉัย", "textarea"], ["symptomFever", "ไข้", "checkbox"], ["symptomHeadache", "ปวดศีรษะ", "checkbox"], ["symptomMyalgia", "ปวดกล้ามเนื้อ/น่อง", "checkbox"], ["symptomConjunctival", "ตาแดง", "checkbox"], ["symptomJaundice", "ดีซ่าน", "checkbox"], ["symptomRenal", "ไตวาย/ปัสสาวะน้อย", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["labResult", "ผลตรวจ Lab", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. ปัจจัยเสี่ยง", "fields": [["floodExposure", "ลุยน้ำ/น้ำท่วม/โคลน", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["farmExposure", "ทำนา/ทำไร่/สัมผัสดินน้ำ", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["animalExposure", "สัมผัสสัตว์/ปัสสาวะสัตว์/หนู", "textarea"], ["woundExposure", "มีบาดแผลขณะสัมผัสดินน้ำ", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["ppeUse", "สวมรองเท้าบูท/อุปกรณ์ป้องกัน", "select", ["สวม", "ไม่สวม", "ไม่ทราบ"]], ["riskPlace", "สถานที่คาดว่าได้รับเชื้อ", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "MELIOIDOSIS": {"label": "โรคเมลิออยโดสิส", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["ageMonth", "อายุ (เดือน)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["religion", "ศาสนา", "text"], ["nationality", "สัญชาติ", "text"], ["occupation", "อาชีพ", "text"], ["workplace", "ที่ทำงาน/โรงเรียน", "text"], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. ประวัติการป่วย/ปัจจัยเสี่ยง", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["diagnosis", "การวินิจฉัย", "textarea"], ["underlyingDM", "เบาหวาน", "checkbox"], ["underlyingRenal", "โรคไต", "checkbox"], ["underlyingLiver", "โรคตับ", "checkbox"], ["underlyingAlcohol", "ดื่มสุราเรื้อรัง", "checkbox"], ["underlyingOther", "โรคประจำตัวอื่น ๆ", "textarea"], ["soilWaterExposure", "สัมผัสดิน/น้ำ", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["woundExposure", "มีแผลสัมผัสดิน/น้ำ", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["riskPlace", "สถานที่คาดว่าได้รับเชื้อ", "textarea"], ["labResult", "ผลเพาะเชื้อ/ผล Lab", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. มาตรการควบคุม/คำแนะนำ", "fields": [["controlEdu", "ให้คำแนะนำหลีกเลี่ยงสัมผัสดินน้ำ/ใส่รองเท้าบูท", "checkbox"], ["controlDM", "แนะนำควบคุมโรคประจำตัว", "checkbox"], ["controlOther", "มาตรการอื่น ๆ", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "SCRUB": {"label": "โรคสครับไทฟัส", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["religion", "ศาสนา", "text"], ["nationality", "สัญชาติ", "text"], ["occupation", "อาชีพ", "text"], ["workplace", "ที่ทำงาน/โรงเรียน", "text"], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. อาการ/ผลตรวจ", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["diagnosis", "การวินิจฉัย", "textarea"], ["symptomFever", "ไข้", "checkbox"], ["symptomHeadache", "ปวดศีรษะ", "checkbox"], ["symptomMyalgia", "ปวดเมื่อย", "checkbox"], ["symptomEschar", "แผล Eschar", "checkbox"], ["escharLocation", "ตำแหน่ง Eschar", "text"], ["symptomRash", "ผื่น", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["labResult", "ผลตรวจ Lab", "textarea"], ["treatment", "การรักษา", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. ประวัติเสี่ยง", "fields": [["forestExposure", "เข้าป่า/ไร่/สวน/พื้นที่รก", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["miteExposure", "ถูกแมลง/ไรอ่อนกัดหรือสงสัย", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["animalExposure", "สัมผัสสัตว์/แหล่งรังหนู", "textarea"], ["riskPlace", "สถานที่คาดว่าได้รับเชื้อ", "textarea"], ["controlMeasure", "มาตรการควบคุม/ให้คำแนะนำ", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "STREP_SUIS": {"label": "โรคหูดับ / Streptococcus suis", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป/สิทธิรักษา", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["occupation", "อาชีพ", "text"], ["education", "ระดับการศึกษา", "select", ["ไม่เคยเรียน", "ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา/อนุปริญญา", "ปริญญาตรี", "สูงกว่าปริญญาตรี"]], ["income", "รายได้ครัวเรือน/เดือน", "select", ["<10,000 บาท", "10,000-25,000 บาท", ">25,000 บาท"]], ["treatmentRight", "สิทธิการรักษา", "select", ["ไม่มีสิทธิ", "ประกันสังคม", "หลักประกันสุขภาพถ้วนหน้า", "สิทธิข้าราชการ", "อื่น ๆ"]], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. อาการ/การรักษา", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["diagnosis", "การวินิจฉัย", "textarea"], ["symptomFever", "ไข้", "checkbox"], ["symptomHeadache", "ปวดศีรษะ", "checkbox"], ["symptomHearingLoss", "หูดับ/การได้ยินลดลง", "checkbox"], ["symptomMeningitis", "เยื่อหุ้มสมองอักเสบ", "checkbox"], ["symptomSepsis", "ติดเชื้อในกระแสเลือด", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["labResult", "ผลเพาะเชื้อ/ผล Lab", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. ประวัติเสี่ยง", "fields": [["rawPork", "กินหมูดิบ/ลาบเลือด/หลู้", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["slaughterExposure", "ชำแหละ/สัมผัสหมูหรือเนื้อหมูดิบ", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["woundExposure", "มีบาดแผลขณะสัมผัสหมูดิบ", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["mealPlace", "สถานที่/งานเลี้ยง/ร้านที่รับประทาน", "textarea"], ["otherCases", "มีผู้ป่วยร่วมวงอาหารหรือไม่", "textarea"], ["controlMeasure", "มาตรการควบคุมโรค/สุขศึกษา", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "AFP": {"label": "AFP / Polio", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไปเด็ก", "fields": [["patientPrefix", "คำนำหน้า", "select", ["เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["birthDate", "วัน/เดือน/ปีเกิด", "date"], ["ageAtOnsetYear", "อายุขณะเริ่มป่วย (ปี)", "number"], ["ageAtOnsetMonth", "เดือน", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["occupation", "อาชีพ", "text"], ["religion", "ศาสนา", "text"], ["ethnicity", "เชื้อชาติ", "text"], ["sickAddress", "ที่อยู่ขณะป่วย", "text"], ["currentAddress", "ที่อยู่ปัจจุบัน", "text"], ["fatherName", "ชื่อบิดา", "text"], ["motherName", "ชื่อมารดา", "text"], ["guardianName", "ชื่อผู้ปกครอง", "text"], ["parentOccupation", "อาชีพบิดา/มารดา", "text"], ["phone", "โทรศัพท์", "text"], ["schoolName", "โรงเรียน", "text"], ["schoolClass", "ระดับชั้น", "text"]]}, {"title": "2. อาการ AFP", "fields": [["onsetDate", "วันเริ่มมีอาการ", "date"], ["paralysisDate", "วันที่เริ่มอ่อนแรง/อัมพาต", "date"], ["paralysisSite", "ตำแหน่งกล้ามเนื้ออ่อนแรง", "textarea"], ["feverAtOnset", "มีไข้ตอนเริ่มอ่อนแรง", "select", ["มี", "ไม่มี", "ไม่ทราบ"]], ["progression", "การดำเนินโรค/ความรุนแรง", "textarea"], ["diagnosis", "การวินิจฉัย", "textarea"], ["outcome", "ผลการรักษา/ความพิการหลงเหลือ", "textarea"]]}, {"title": "3. ประวัติวัคซีน/เก็บตัวอย่าง", "fields": [["opvDoses", "จำนวนครั้งที่ได้รับ OPV/IPV", "text"], ["lastPolioVaccineDate", "วันที่ได้รับวัคซีนโปลิโอครั้งล่าสุด", "date"], ["stool1Date", "วันที่เก็บอุจจาระครั้งที่ 1", "date"], ["stool2Date", "วันที่เก็บอุจจาระครั้งที่ 2", "date"], ["labResult", "ผลตรวจทางห้องปฏิบัติการ", "textarea"], ["contactSurvey", "การค้นหาผู้ป่วย AFP เพิ่มเติม/ผู้สัมผัส", "textarea"], ["controlMeasure", "มาตรการควบคุมโรค", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "ANTHRAX": {"label": "โรคแอนแทรกซ์", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["occupation", "อาชีพ", "text"], ["education", "ระดับการศึกษา", "select", ["ไม่เคยเรียน", "ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา/อนุปริญญา", "ปริญญาตรี", "สูงกว่าปริญญาตรี"]], ["income", "รายได้ครัวเรือน/เดือน", "select", ["<10,000 บาท", "10,000-25,000 บาท", ">25,000 บาท"]], ["treatmentRight", "สิทธิการรักษา", "select", ["ไม่มีสิทธิ", "ประกันสังคม", "หลักประกันสุขภาพถ้วนหน้า", "สิทธิข้าราชการ", "อื่น ๆ"]], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. อาการ/ชนิดโรค", "fields": [["onsetDate", "วันเริ่มป่วย", "date"], ["anthraxType", "ชนิดที่สงสัย", "select", ["ผิวหนัง", "ทางเดินอาหาร", "ทางเดินหายใจ", "อื่น ๆ"]], ["skinLesion", "แผลผิวหนัง/Eschar", "textarea"], ["symptomFever", "ไข้", "checkbox"], ["symptomGI", "อาการทางเดินอาหาร", "checkbox"], ["symptomResp", "อาการทางเดินหายใจ", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["diagnosis", "การวินิจฉัย", "textarea"], ["labResult", "ผลตรวจ Lab/เพาะเชื้อ", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "รักษาอยู่", "เสียชีวิต"]]]}, {"title": "3. ประวัติเสี่ยง", "fields": [["animalContact", "สัมผัสสัตว์ป่วย/ตายผิดปกติ", "textarea"], ["meatHandling", "ชำแหละ/กินเนื้อสัตว์เสี่ยง", "textarea"], ["animalProduct", "สัมผัสหนัง/ขน/ผลิตภัณฑ์สัตว์", "textarea"], ["riskPlace", "แหล่งโรค/สถานที่เสี่ยง", "textarea"], ["vetCoordination", "ประสานปศุสัตว์/ควบคุมสัตว์", "checkbox"], ["controlMeasure", "มาตรการควบคุมโรค", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "TB": {"label": "วัณโรค", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลทั่วไป", "fields": [["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["cid", "เลขบัตรประชาชน", "text"], ["ageYear", "อายุ (ปี)", "number"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["hn", "HN", "text"], ["an", "AN", "text"], ["religion", "ศาสนา", "text"], ["nationality", "สัญชาติ", "text"], ["occupation", "อาชีพ", "text"], ["workplace", "ที่ทำงาน/โรงเรียน", "text"], ["address", "ที่อยู่ขณะป่วย", "text"], ["moo", "หมู่ที่", "text"], ["village", "หมู่บ้าน/ชุมชน", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["phone", "โทรศัพท์", "text"]]}, {"title": "2. ข้อมูลวัณโรค", "fields": [["tbType", "ประเภทวัณโรค", "select", ["Pulmonary TB", "Extrapulmonary TB", "MDR/RR-TB", "อื่น ๆ"]], ["onsetDate", "วันเริ่มมีอาการ", "date"], ["diagnosisDate", "วันที่วินิจฉัย", "date"], ["treatmentStartDate", "วันที่เริ่มรักษา", "date"], ["symptomCough", "ไอเรื้อรัง", "checkbox"], ["symptomHemoptysis", "ไอเป็นเลือด", "checkbox"], ["symptomFever", "ไข้", "checkbox"], ["symptomWeightLoss", "น้ำหนักลด", "checkbox"], ["symptomNightSweat", "เหงื่อออกกลางคืน", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["sputumResult", "ผลเสมหะ AFB/GeneXpert/Culture", "textarea"], ["xray", "ผล CXR", "textarea"], ["hivStatus", "ผล HIV", "select", ["Positive", "Negative", "Unknown", "ไม่ตรวจ"]]]}, {"title": "3. ผู้สัมผัส/มาตรการ", "fields": [["householdContacts", "จำนวนผู้สัมผัสร่วมบ้าน", "number"], ["closeContacts", "ผู้สัมผัสใกล้ชิด/ที่ทำงาน/โรงเรียน", "textarea"], ["contactScreening", "ผลคัดกรองผู้สัมผัส", "textarea"], ["dotPlan", "แผน DOT/ผู้กำกับการกินยา", "textarea"], ["controlMeasure", "มาตรการควบคุม/ติดตาม", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}, "AEFI": {"label": "AEFI 2", "sections": [{"title": "ข้อมูลรายงาน/ทีมสอบสวน", "fields": [["reportNo", "เลขที่รายงาน", "text"], ["reportedDate", "วันที่รับแจ้ง", "date"], ["investigationDate", "วันที่สอบสวน", "date"], ["status", "สถานะรายงาน", "select", ["draft|ร่างรายงาน", "ready|พร้อมส่ง", "sent|ส่งแล้ว"]], ["investigatorTeam", "ทีมสอบสวนโรค", "textarea"], ["signatureName", "ผู้ลงนาม", "text"], ["signaturePosition", "ตำแหน่งผู้ลงนาม", "text"], ["pdfUrl", "URL PDF", "text"], ["imageUrls", "URL รูป/หลักฐาน", "textarea"]]}, {"title": "1. ข้อมูลผู้ป่วย", "fields": [["hn", "HN", "text"], ["an", "AN", "text"], ["cid", "เลขประจำตัวประชาชน 13 หลัก", "text"], ["patientPrefix", "คำนำหน้า", "select", ["นาย", "นาง", "นางสาว", "เด็กชาย", "เด็กหญิง"]], ["patientName", "ชื่อ-สกุล", "text"], ["sex", "เพศ", "select", ["ชาย", "หญิง"]], ["ethnicity", "เชื้อชาติ", "select", ["ไทย", "อื่น ๆ"]], ["birthDate", "วันเดือนปีเกิด", "date"], ["ageYear", "อายุขณะป่วย (ปี)", "number"], ["ageMonth", "เดือน", "number"], ["ageDay", "วัน", "number"], ["ageGroup", "กลุ่มอายุ", "select", ["<1 ปี", "1-5 ปี", ">5 ปี"]], ["patientType", "ประเภทผู้ป่วย", "select", ["ผู้ป่วยใน", "ผู้ป่วยนอก", "ผู้ป่วยจากชุมชน"]], ["address", "ที่อยู่ขณะเริ่มป่วย", "text"], ["moo", "หมู่ที่", "text"], ["tambon", "ตำบล", "text"], ["amphoe", "อำเภอ", "text"], ["province", "จังหวัด", "text"], ["homePhone", "โทรศัพท์บ้าน", "text"], ["mobilePhone", "โทรศัพท์มือถือ", "text"], ["guardianName", "ชื่อผู้ปกครอง (<15 ปี)", "text"], ["guardianPhone", "โทรศัพท์ผู้ปกครอง", "text"]]}, {"title": "2. ข้อมูลวัคซีน/สถานที่รับวัคซีน", "fields": [["vaccinePlace", "ชื่อสถานที่รับวัคซีน", "text"], ["vaccinePlaceType", "ประเภทสถานที่", "select", ["ภาครัฐ", "ภาคเอกชน", "อื่น ๆ"]], ["vaccinePlaceAddress", "ที่อยู่สถานที่รับวัคซีน", "text"], ["fixedOrMobile", "ลักษณะหน่วยบริการ", "select", ["สถานที่ตั้งถาวร", "หน่วยเคลื่อนที่", "อื่น ๆ"]], ["vaccineName", "ชื่อวัคซีน", "text"], ["doseNo", "เข็มที่/ครั้งที่", "text"], ["lotNo", "Lot no.", "text"], ["manufacturer", "ผู้ผลิต", "text"], ["vaccinationDate", "วันที่ได้รับวัคซีน", "date"], ["vaccinationTime", "เวลาที่ได้รับวัคซีน", "time"], ["route", "วิธีให้วัคซีน", "text"], ["site", "ตำแหน่งที่ฉีด", "text"]]}, {"title": "3. เหตุการณ์ไม่พึงประสงค์", "fields": [["onsetDate", "วันที่เริ่มมีอาการ", "date"], ["onsetTime", "เวลาเริ่มมีอาการ", "time"], ["symptomFever", "ไข้", "checkbox"], ["symptomRash", "ผื่น", "checkbox"], ["symptomAnaphylaxis", "Anaphylaxis", "checkbox"], ["symptomConvulsion", "ชัก", "checkbox"], ["symptomAbscess", "ฝี/บวมแดงบริเวณฉีด", "checkbox"], ["symptomOther", "อาการอื่น ๆ", "textarea"], ["severity", "ระดับความรุนแรง", "select", ["ไม่รุนแรง", "รุนแรง", "เสียชีวิต"]], ["hospitalized", "รับไว้รักษาในโรงพยาบาล", "select", ["ใช่", "ไม่ใช่"]], ["diagnosis", "การวินิจฉัย", "textarea"], ["labResult", "ผลตรวจ Lab", "textarea"], ["outcome", "ผลการรักษา", "select", ["หาย", "ยังมีอาการ", "พิการ", "เสียชีวิต"]]]}, {"title": "4. การสอบสวน/สรุปสาเหตุ", "fields": [["caseClassification", "การจัดกลุ่มสาเหตุ AEFI", "select", ["Consistent causal association", "Indeterminate", "Inconsistent causal association", "Unclassifiable", "รอประเมิน"]], ["investigationSummary", "สรุปผลการสอบสวน", "textarea"], ["controlMeasure", "มาตรการดำเนินการ/รายงานต่อหน่วยงาน", "textarea"]]}, {"title": "สรุปสำหรับนำส่ง สสอ.ห้วยเม็ก", "fields": [["summary", "สรุปรายงาน", "textarea"], ["controlMeasureSummary", "สรุปมาตรการควบคุมโรค", "textarea"]]}]}};
+
+document.addEventListener('DOMContentLoaded',()=>{ initTemplateSelect(); });
+
+function callServer(fn,args=[]){ return new Promise(resolve=>{ google.script.run.withSuccessHandler(res=>resolve(res)).withFailureHandler(err=>resolve({ok:false,message:err.message||String(err)}))[fn](...args); }); }
+function loading(t){Swal.fire({title:t||'กำลังทำงาน...',allowOutsideClick:false,didOpen:()=>Swal.showLoading()})}
+function switchAuth(name,btn){['login','register','forgot'].forEach(x=>document.getElementById(x+'Form').classList.add('hidden'));document.getElementById(name+'Form').classList.remove('hidden');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');}
+
+function initTemplateSelect(){ 
+  templateKey.innerHTML = Object.keys(TEMPLATES).map(k=>`<option value="${k}">${TEMPLATES[k].label}</option>`).join('');
+  const diseaseOptions = '<option value="">ทุกโรค</option>' + Object.keys(TEMPLATES).map(k=>`<option value="${TEMPLATES[k].label}">${TEMPLATES[k].label}</option>`).join('');
+  diseaseFilter.innerHTML = diseaseOptions;
+  if (typeof pdfDiseaseFilter !== 'undefined' && pdfDiseaseFilter) pdfDiseaseFilter.innerHTML = diseaseOptions;
+  if (typeof registerDiseaseFilter !== 'undefined' && registerDiseaseFilter) registerDiseaseFilter.innerHTML = diseaseOptions;
+  if (typeof editTemplateKey !== 'undefined' && editTemplateKey) editTemplateKey.innerHTML = Object.keys(TEMPLATES).map(k=>`<option value="${k}">${TEMPLATES[k].label}</option>`).join('');
+  renderDiseaseForm();
+}
+
+function renderDiseaseForm(){
+  const key = templateKey.value; const tmpl = TEMPLATES[key]; diseaseLabel.value = tmpl.label;
+  let html = '';
+  tmpl.sections.forEach(sec=>{
+    html += `<div class="section-title">${sec.title}</div><div class="grid">`;
+    sec.fields.forEach(f=>{ html += renderField(f); });
+    html += '</div>';
+  });
+  dynamicForm.innerHTML = html;
+  const today = new Date().toISOString().slice(0,10);
+  ['reportedDate','investigationDate'].forEach(id=>{const el=document.getElementById(id); if(el && !el.value) el.value=today;});
+  ['tambon','amphoe','province'].forEach(id=>{const el=document.getElementById(id); if(el && !el.value) el.value = id==='tambon'?'คำใหญ่':id==='amphoe'?'ห้วยเม็ก':'กาฬสินธุ์';});
+}
+
+function renderField(f){
+  const [id,label,type,opts] = f;
+  const wide = ['textarea','datetime-local'].includes(type) || ['summary','controlMeasureSummary','riskHistory','diagnosis','labResult','controlMeasure','investigatorTeam'].includes(id);
+  const col = wide ? 'c6' : 'c3';
+  if(type==='textarea') return `<div class="${col} fg"><label>${label}</label><textarea id="${id}"></textarea></div>`;
+  if(type==='select') {
+    const options = (opts||[]).map(o=>{ let v=o, t=o; if(String(o).includes('|')){ const a=String(o).split('|'); v=a[0]; t=a[1]; } return `<option value="${v}">${t}</option>`; }).join('');
+    return `<div class="${col} fg"><label>${label}</label><select id="${id}">${options}</select></div>`;
+  }
+  if(type==='checkbox') return `<div class="${col} fg"><label>&nbsp;</label><div class="checkwrap"><input id="${id}" type="checkbox"><span>${label}</span></div></div>`;
+  return `<div class="${col} fg"><label>${label}</label><input id="${id}" type="${type||'text'}"></div>`;
+}
+
+async function testConnection(){ loading('กำลังทดสอบ Google Sheet'); const res=await callServer('testSheetConnection'); Swal.close(); Swal.fire(res.ok?'เชื่อมสำเร็จ':'เชื่อมไม่สำเร็จ', res.ok?`ไฟล์: ${res.spreadsheetName}<br>ชีต: ${res.sheets.join(', ')}`:res.message, res.ok?'success':'error'); }
+async function doLogin(){ if(!loginUsername.value||!loginPassword.value)return Swal.fire('ข้อมูลไม่ครบ','กรุณากรอกชื่อผู้ใช้และรหัสผ่าน','warning'); loading('กำลังเข้าสู่ระบบ'); const res=await callServer('login',[loginUsername.value,loginPassword.value]); Swal.close(); if(!res.ok)return Swal.fire('เข้าสู่ระบบไม่สำเร็จ',res.message,'error'); currentUser=res.user; authPage.classList.add('hidden'); appPage.classList.remove('hidden'); userFullname.textContent=currentUser.fullname||currentUser.username; userRole.textContent=currentUser.role; avatar.textContent=(currentUser.fullname||currentUser.username||'U').slice(0,1).toUpperCase(); if(currentUser.role!=='admin'){userMenu.style.display='none';logMenu.style.display='none';auditMenu.style.display='none';hashMenu.style.display='none'} await refreshCases(false); await loadEpiDashboard(); Swal.fire({icon:'success',title:'สำเร็จ',timer:900,showConfirmButton:false}); }
+async function doRegister(){ const payload={fullname:regFullname.value,position:regPosition.value,phone:regPhone.value,email:regEmail.value,username:regUsername.value,password:regPassword.value}; loading('กำลังสมัครใช้งาน'); const res=await callServer('registerUser',[payload]); Swal.close(); Swal.fire(res.ok?'สำเร็จ':'ไม่สำเร็จ',res.message,res.ok?'success':'error'); }
+async function doForgot(){ loading('กำลังขอรหัสยืนยัน'); const res=await callServer('forgotPassword',[forgotIdentifier.value]); Swal.close(); if(res.ok)resetBox.classList.remove('hidden'); Swal.fire(res.ok?'สำเร็จ':'ไม่สำเร็จ',res.message+(res.devToken?'<br><b>รหัส: '+res.devToken+'</b>':''),res.ok?'success':'error'); }
+async function doReset(){ loading('กำลังเปลี่ยนรหัสผ่าน'); const res=await callServer('resetPassword',[forgotIdentifier.value,resetToken.value,newPassword.value]); Swal.close(); Swal.fire(res.ok?'สำเร็จ':'ไม่สำเร็จ',res.message,res.ok?'success':'error'); }
+function doLogout(){ callServer('logout',[currentUser]); currentUser=null; appPage.classList.add('hidden'); authPage.classList.remove('hidden'); }
+
+function showPage(name,btn){ ['dashboard','form','list','ai','register','editCase','pdfReport','users','logs','audit'].forEach(p=>{ const el=document.getElementById(p+'Page'); if(el) el.classList.add('hidden'); }); const page=document.getElementById(name+'Page'); if(page) page.classList.remove('hidden'); document.querySelectorAll('.menu button').forEach(b=>b.classList.remove('active')); if(btn)btn.classList.add('active'); pageTitle.textContent={dashboard:'Dashboard',form:'แบบสอบสวนตามโรค',list:'ข้อมูลจาก Google Sheet',ai:'AI Epidemiologist',register:'ทะเบียนรายงานโรค',editCase:'แก้ไขแบบสอบสวนโรค',pdfReport:'ออกรายงาน PDF ราชการ',users:'จัดการผู้ใช้งาน',logs:'Log การใช้งาน',audit:'Audit Dashboard'}[name] || 'Dashboard'; }
+
+function collectCurrentForm(){
+  const key = templateKey.value; const tmpl = TEMPLATES[key]; const payload={templateKey:key,disease:tmpl.label};
+  tmpl.sections.forEach(sec=>sec.fields.forEach(f=>{ const id=f[0]; const el=document.getElementById(id); if(!el)return; payload[id] = el.type==='checkbox' ? (el.checked ? 'ใช่' : '') : el.value; }));
+  return payload;
+}
+
+async function saveCase(){ const payload=collectCurrentForm(); if(!payload.patientName)return Swal.fire('ข้อมูลไม่ครบ','กรุณากรอกชื่อผู้ป่วย','warning'); loading('กำลังบันทึกแบบสอบสวน'); const res=await callServer('saveCase',[payload,currentUser]); Swal.close(); Swal.fire(res.ok?'สำเร็จ':'ไม่สำเร็จ',res.message,res.ok?'success':'error'); if(res.ok)refreshCases(false); }
+async function refreshCases(show=true){ if(show)loading('กำลังดึงข้อมูลจาก Google Sheet'); const res=await callServer('getCases',[currentUser]); if(show)Swal.close(); if(!res.ok)return Swal.fire('ดึงข้อมูลไม่สำเร็จ',res.message,'error'); cases=res.data||[]; renderCases(); renderPdfReports(); renderRegister(); updateDashboard(); loadEpiDashboard(false); if(show)Swal.fire({icon:'success',title:'รีเฟรชสำเร็จ',timer:700,showConfirmButton:false}); }
+function renderCases(){ const q=(caseSearch?.value||'').toLowerCase(); const df=diseaseFilter?.value||''; const data=cases.filter(c=>(!df || c.disease===df) && JSON.stringify(c).toLowerCase().includes(q)); caseRows.innerHTML=data.map(c=>`<tr><td>${fmt(c.createdAt)}</td><td>${c.disease||''}</td><td>${c.patientName||''}</td><td>${c.cid||''}</td><td>${c.moo||''}</td><td>${statusText(c.status)}</td><td>${c.createdBy||''}</td><td><button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">🧾 PDF</button> ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด</a>` : ''}</td></tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:#64748b">ยังไม่มีข้อมูล</td></tr>'; }
+function updateDashboard(){ statAll.textContent=cases.length; statDraft.textContent=cases.filter(c=>c.status==='draft').length; statReady.textContent=cases.filter(c=>c.status==='ready').length; statDisease.textContent=new Set(cases.map(c=>c.disease).filter(Boolean)).size; const counts={}; cases.forEach(c=>counts[c.disease||'ไม่ระบุ']=(counts[c.disease||'ไม่ระบุ']||0)+1); if(chart)chart.destroy(); chart=new Chart(caseChart,{type:'bar',data:{labels:Object.keys(counts),datasets:[{label:'จำนวนรายงาน',data:Object.values(counts)}]},options:{plugins:{legend:{display:false}},responsive:true}}); }
+async function loadUsers(){ loading('กำลังโหลดผู้ใช้งาน'); const res=await callServer('getUsers',[currentUser]); Swal.close(); if(!res.ok)return Swal.fire('ไม่สำเร็จ',res.message,'error'); userRows.innerHTML=res.data.map(u=>`<tr><td>${u.username||''}</td><td>${u.fullname||''}</td><td>${u.position||''}</td><td>${u.role||''}</td><td>${u.status||''}</td><td><button class="btn btn-small btn-ghost" onclick="setUser('${u.username}','active','${u.role||'staff'}')">อนุมัติ</button> <button class="btn btn-small btn-ghost" onclick="setUser('${u.username}','disabled','${u.role||'staff'}')">ปิด</button></td></tr>`).join(''); }
+async function setUser(username,status,role){ const res=await callServer('updateUserStatus',[username,status,role,currentUser]); Swal.fire(res.ok?'สำเร็จ':'ไม่สำเร็จ',res.message,res.ok?'success':'error'); loadUsers(); }
+async function loadLogs(){ loading('กำลังโหลด Log'); const res=await callServer('getLogs',[currentUser]); Swal.close(); if(!res.ok)return Swal.fire('ไม่สำเร็จ',res.message,'error'); logRows.innerHTML=res.data.map(l=>`<tr><td>${fmt(l.timestamp)}</td><td>${l.username||''}</td><td>${l.role||''}</td><td>${l.action||''}</td><td>${l.detail||''}</td></tr>`).join(''); }
+function fmt(v){if(!v)return '';try{return new Date(v).toLocaleString('th-TH')}catch(e){return v}}
+function statusText(s){return {draft:'ร่างรายงาน',ready:'พร้อมส่ง',sent:'ส่งแล้ว'}[s]||s||''}
+
+
+let auditActionChart = null;
+let auditUserChart = null;
+
+function loadPdfReportPage(){
+  refreshCases(false);
+  renderPdfReports();
+}
+
+function renderPdfReports(){
+  if (typeof pdfRows === 'undefined' || !pdfRows) return;
+  const q = (pdfSearch?.value || '').toLowerCase();
+  const df = pdfDiseaseFilter?.value || '';
+  const data = cases.filter(c => (!df || c.disease === df) && JSON.stringify(c).toLowerCase().includes(q));
+
+  pdfRows.innerHTML = data.map(c => `
+    <tr>
+      <td>${fmt(c.createdAt)}</td>
+      <td>${c.reportNo || ''}</td>
+      <td>${c.disease || ''}</td>
+      <td>${c.patientName || ''}</td>
+      <td>${c.cid || ''}</td>
+      <td>${statusText(c.status)}</td>
+      <td>
+        <button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">🧾 สร้าง PDF</button>
+        ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด PDF</a>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b">ยังไม่มีข้อมูลสำหรับออกรายงาน</td></tr>';
+}
+
+async function createPdf(caseId) {
+  const confirm = await Swal.fire({
+    title: 'สร้าง PDF แบบฟอร์มราชการ?',
+    text: 'ระบบจะสร้างไฟล์ PDF และบันทึก URL กลับเข้า Google Sheet',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'สร้าง PDF',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังสร้าง PDF แบบฟอร์มราชการ');
+  const res = await callServer('generateCasePdf', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('สร้าง PDF ไม่สำเร็จ', res.message, 'error');
+
+  Swal.fire({
+    icon: 'success',
+    title: 'สร้าง PDF สำเร็จ',
+    html: `<a href="${res.url}" target="_blank" class="swal2-confirm swal2-styled">เปิด PDF</a>`,
+    showConfirmButton: true,
+    confirmButtonText: 'ตกลง'
+  });
+
+  refreshCases(false);
+}
+
+async function openChangePassword() {
+  const { value: formValues } = await Swal.fire({
+    title: 'เปลี่ยนรหัสผ่าน',
+    html:
+      `<input id="oldPass" type="password" class="swal2-input" placeholder="รหัสผ่านเดิม">` +
+      `<input id="newPass" type="password" class="swal2-input" placeholder="รหัสผ่านใหม่">` +
+      `<input id="confirmPass" type="password" class="swal2-input" placeholder="ยืนยันรหัสผ่านใหม่">`,
+    focusConfirm: false,
+    preConfirm: () => {
+      const oldPass = document.getElementById('oldPass').value;
+      const newPass = document.getElementById('newPass').value;
+      const confirmPass = document.getElementById('confirmPass').value;
+
+      if (!oldPass || !newPass || !confirmPass) {
+        Swal.showValidationMessage('กรอกข้อมูลให้ครบ');
+        return false;
+      }
+      if (newPass.length < 6) {
+        Swal.showValidationMessage('รหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร');
+        return false;
+      }
+      if (newPass !== confirmPass) {
+        Swal.showValidationMessage('รหัสใหม่ไม่ตรงกัน');
+        return false;
+      }
+      return { oldPass, newPass };
+    }
+  });
+
+  if (!formValues) return;
+
+  loading('กำลังเปลี่ยนรหัสผ่าน...');
+  const res = await callServer('changePassword', [
+    currentUser.username,
+    formValues.oldPass,
+    formValues.newPass
+  ]);
+  Swal.close();
+
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+}
+
+async function loadAuditDashboard() {
+  loading('กำลังโหลด Audit Dashboard');
+  const res = await callServer('getAuditSummary', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('ไม่สำเร็จ', res.message, 'error');
+
+  const d = res.data;
+  auditTotal.textContent = d.total || 0;
+  auditLogin.textContent = d.loginSuccess || 0;
+  auditFailed.textContent = d.loginFailed || 0;
+  auditPdf.textContent = d.pdfCreated || 0;
+
+  renderAuditChart('auditActionChart', 'action', d.byAction);
+  renderAuditChart('auditUserChart', 'user', d.byUser);
+
+  auditRows.innerHTML = (d.latest || []).map(l => `
+    <tr>
+      <td>${fmt(l.timestamp)}</td>
+      <td>${l.username || ''}</td>
+      <td>${l.role || ''}</td>
+      <td>${l.action || ''}</td>
+      <td>${l.detail || ''}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="text-align:center;color:#64748b">ยังไม่มี log</td></tr>';
+}
+
+function renderAuditChart(canvasId, type, obj) {
+  const labels = Object.keys(obj || {});
+  const data = Object.values(obj || {});
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+
+  if (canvasId === 'auditActionChart' && auditActionChart) auditActionChart.destroy();
+  if (canvasId === 'auditUserChart' && auditUserChart) auditUserChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type: type === 'action' ? 'bar' : 'doughnut',
+    data: {
+      labels,
+      datasets: [{ label: 'จำนวน', data }]
+    },
+    options: { responsive: true, plugins: { legend: { display: type !== 'action' } } }
+  });
+
+  if (canvasId === 'auditActionChart') auditActionChart = chart;
+  if (canvasId === 'auditUserChart') auditUserChart = chart;
+}
+
+
+
+let epiWeekChart = null;
+let diseasePieChart = null;
+let villageBarChart = null;
+
+async function loadEpiDashboard(showLoading = true) {
+  if (showLoading) loading('กำลังโหลด Epi Dashboard');
+  const res = await callServer('getEpiDashboard', [currentUser]);
+  if (showLoading) Swal.close();
+
+  if (!res.ok) {
+    if (showLoading) Swal.fire('โหลด Dashboard ไม่สำเร็จ', res.message, 'error');
+    return;
+  }
+
+  const d = res.data || {};
+  drawEpiChart('epiWeekChart', 'bar', d.byWeekLabels || [], d.byWeekValues || [], 'จำนวนรายงานรายสัปดาห์');
+  drawObjectChart('diseasePieChart', 'doughnut', d.byDisease || {}, 'จำนวนรายงานแยกโรค');
+  drawTopVillageChart(d.topVillages || []);
+  renderHotspots(d.topHotspots || []);
+}
+
+function drawEpiChart(canvasId, type, labels, data, label) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (canvasId === 'epiWeekChart' && epiWeekChart) epiWeekChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type,
+    data: { labels, datasets: [{ label, data }] },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: type === 'bar' ? { y: { beginAtZero: true, ticks: { precision: 0 } } } : {}
+    }
+  });
+
+  if (canvasId === 'epiWeekChart') epiWeekChart = chart;
+}
+
+function drawObjectChart(canvasId, type, obj, label) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  const labels = Object.keys(obj || {});
+  const data = Object.values(obj || {});
+
+  if (canvasId === 'diseasePieChart' && diseasePieChart) diseasePieChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type,
+    data: { labels, datasets: [{ label, data }] },
+    options: { responsive: true }
+  });
+
+  if (canvasId === 'diseasePieChart') diseasePieChart = chart;
+}
+
+function drawTopVillageChart(items) {
+  const ctx = document.getElementById('villageBarChart');
+  if (!ctx) return;
+  if (villageBarChart) villageBarChart.destroy();
+
+  villageBarChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: items.map(x => x.label),
+      datasets: [{ label: 'จำนวนรายงาน', data: items.map(x => x.value) }]
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderHotspots(items) {
+  if (typeof hotspotRows === 'undefined' || !hotspotRows) return;
+  hotspotRows.innerHTML = items.map((x, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${x.label}</td>
+      <td><b>${x.value}</b></td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" style="text-align:center;color:#64748b">ยังไม่มีข้อมูล hotspot</td></tr>';
+}
+
+async function migratePasswordHashFromUI() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    return Swal.fire('ไม่อนุญาต', 'เฉพาะผู้ดูแลระบบเท่านั้น', 'warning');
+  }
+  const confirm = await Swal.fire({
+    title: 'แปลงรหัสผ่านเป็น SHA-256?',
+    text: 'ระบบจะเข้ารหัส password เดิมทุกบัญชีในชีต users',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'เริ่มแปลง',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังแปลงรหัสผ่าน');
+  const res = await callServer('migratePasswordsToHash');
+  Swal.close();
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+}
+
+
+
+let editingCaseId = null;
+let editingCaseData = null;
+
+async function loadRegisterPage(){
+  await refreshCases(false);
+  renderRegister();
+}
+
+function renderRegister(){
+  if (typeof registerRows === 'undefined' || !registerRows) return;
+
+  const q = (registerSearch?.value || '').toLowerCase();
+  const df = registerDiseaseFilter?.value || '';
+  const sf = registerStatusFilter?.value || '';
+
+  const data = cases.filter(c => {
+    const hitQ = JSON.stringify(c).toLowerCase().includes(q);
+    const hitD = !df || c.disease === df;
+    const hitS = !sf || c.status === sf;
+    return hitQ && hitD && hitS;
+  });
+
+  registerRows.innerHTML = data.map(c => `
+    <tr>
+      <td>${fmt(c.createdAt)}</td>
+      <td>${c.reportNo || ''}</td>
+      <td>${c.disease || ''}</td>
+      <td>${c.patientName || ''}</td>
+      <td>${c.cid || ''}</td>
+      <td>${[c.village, c.moo ? 'หมู่ ' + c.moo : '', c.tambon].filter(Boolean).join(' ')}</td>
+      <td>${statusText(c.status)}</td>
+      <td>${fmt(c.updatedAt)}</td>
+      <td>
+        <button class="btn btn-small btn-ghost" onclick="openEditCase('${c.caseId}')">✏️ แก้ไข</button>
+        <button class="btn btn-small btn-ghost" onclick="viewCaseLogs('${c.caseId}')">🧾 Log</button>
+        <button class="btn btn-small btn-ghost" onclick="createPdf('${c.caseId}')">PDF</button>
+        ${c.pdfUrl ? `<a class="btn btn-small btn-ghost" href="${c.pdfUrl}" target="_blank">เปิด</a>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="9" style="text-align:center;color:#64748b">ยังไม่มีข้อมูลทะเบียนรายงานโรค</td></tr>';
+}
+
+async function openEditCase(caseId){
+  editingCaseId = caseId;
+  loading('กำลังเปิดแบบสอบสวน');
+  const res = await callServer('getCaseById', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('เปิดข้อมูลไม่สำเร็จ', res.message, 'error');
+
+  editingCaseData = res.data || {};
+  const key = editingCaseData.templateKey || inferTemplateKeyFromDisease(editingCaseData.disease);
+  editTemplateKey.value = key || Object.keys(TEMPLATES)[0];
+  renderEditDiseaseForm();
+
+  editCaseInfo.innerHTML = `
+    <b>เลขที่รายงาน:</b> ${editingCaseData.reportNo || '-'} |
+    <b>ผู้ป่วย:</b> ${editingCaseData.patientName || '-'} |
+    <b>โรค:</b> ${editingCaseData.disease || '-'} |
+    <b>ปรับปรุงล่าสุด:</b> ${fmt(editingCaseData.updatedAt)}
+  `;
+
+  fillEditForm(editingCaseData);
+  showPage('editCase');
+}
+
+function inferTemplateKeyFromDisease(disease){
+  disease = String(disease || '');
+  return Object.keys(TEMPLATES).find(k => TEMPLATES[k].label === disease || disease.includes(TEMPLATES[k].label)) || '';
+}
+
+function renderEditDiseaseForm(){
+  const key = editTemplateKey.value;
+  const tmpl = TEMPLATES[key];
+  if (!tmpl) return;
+
+  editDiseaseLabel.value = tmpl.label;
+  let html = '';
+  tmpl.sections.forEach(sec => {
+    html += `<div class="section-title">${sec.title}</div><div class="grid">`;
+    sec.fields.forEach(f => html += renderEditField(f));
+    html += '</div>';
+  });
+  editDynamicForm.innerHTML = html;
+
+  // เติมข้อมูลเดิมอีกครั้งหลังเปลี่ยน template
+  if (editingCaseData) fillEditForm(editingCaseData);
+}
+
+function renderEditField(f){
+  const [id,label,type,opts] = f;
+  const eid = 'edit_' + id;
+  const wide = ['textarea','datetime-local'].includes(type) || ['summary','controlMeasureSummary','riskHistory','diagnosis','labResult','controlMeasure','investigatorTeam'].includes(id);
+  const col = wide ? 'c6' : 'c3';
+
+  if(type === 'textarea') return `<div class="${col} fg"><label>${label}</label><textarea id="${eid}" data-field="${id}"></textarea></div>`;
+
+  if(type === 'select') {
+    const options = (opts || []).map(o => {
+      let v = o, t = o;
+      if(String(o).includes('|')){ const a = String(o).split('|'); v = a[0]; t = a[1]; }
+      return `<option value="${v}">${t}</option>`;
+    }).join('');
+    return `<div class="${col} fg"><label>${label}</label><select id="${eid}" data-field="${id}">${options}</select></div>`;
+  }
+
+  if(type === 'checkbox') {
+    return `<div class="${col} fg"><label>&nbsp;</label><div class="checkwrap"><input id="${eid}" data-field="${id}" type="checkbox"><span>${label}</span></div></div>`;
+  }
+
+  return `<div class="${col} fg"><label>${label}</label><input id="${eid}" data-field="${id}" type="${type || 'text'}"></div>`;
+}
+
+function fillEditForm(data){
+  const inputs = editDynamicForm.querySelectorAll('[data-field]');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    const val = data[field];
+
+    if (el.type === 'checkbox') {
+      el.checked = val === 'ใช่' || val === true || val === 'true';
+    } else {
+      el.value = normalizeForInputValue(el, val);
+    }
+  });
+}
+
+function normalizeForInputValue(el, val){
+  if (val === undefined || val === null) return '';
+  if (el.type === 'date' && String(val).includes('T')) return String(val).slice(0,10);
+  if (el.type === 'datetime-local' && String(val).includes('T')) return String(val).slice(0,16);
+  return val;
+}
+
+function collectEditForm(){
+  const key = editTemplateKey.value;
+  const tmpl = TEMPLATES[key];
+  const payload = { templateKey: key, disease: tmpl.label };
+
+  const inputs = editDynamicForm.querySelectorAll('[data-field]');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    payload[field] = el.type === 'checkbox' ? (el.checked ? 'ใช่' : '') : el.value;
+  });
+
+  return payload;
+}
+
+async function saveEditedCase(){
+  if (!editingCaseId) return Swal.fire('ไม่พบข้อมูล', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  const payload = collectEditForm();
+  if (!payload.patientName) return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกชื่อผู้ป่วย', 'warning');
+
+  const confirm = await Swal.fire({
+    title: 'บันทึกการแก้ไข?',
+    text: 'ระบบจะบันทึกทับรายงานเดิม และเก็บ log การแก้ไข',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังบันทึกการแก้ไข');
+  const res = await callServer('updateCase', [editingCaseId, payload, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('บันทึกไม่สำเร็จ', res.message, 'error');
+
+  editingCaseData = Object.assign({}, editingCaseData, payload);
+  await refreshCases(false);
+
+  Swal.fire({
+    icon: 'success',
+    title: 'บันทึกสำเร็จ',
+    html: `<div style="text-align:left"><b>รายการเปลี่ยนแปลง:</b><br>${(res.changed || '').replaceAll(';','<br>')}</div>`
+  });
+}
+
+async function viewCaseLogs(caseId){
+  loading('กำลังโหลดประวัติการแก้ไข');
+  const res = await callServer('getCaseEditLogs', [caseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('โหลด Log ไม่สำเร็จ', res.message, 'error');
+
+  const html = (res.data || []).map(l => `
+    <div style="text-align:left;border-bottom:1px solid #e5e7eb;padding:8px 0">
+      <b>${fmt(l.timestamp)}</b> | ${l.username || ''} | ${l.action || ''}<br>
+      <span style="color:#475569">${l.detail || ''}</span>
+    </div>
+  `).join('') || '<div style="color:#64748b">ยังไม่พบประวัติการแก้ไข</div>';
+
+  Swal.fire({
+    title: '🧾 ประวัติการแก้ไข',
+    html: `<div style="max-height:460px;overflow:auto">${html}</div>`,
+    width: 850,
+    confirmButtonText: 'ปิด'
+  });
+}
+
+function loadCurrentCaseLogs(){
+  if (!editingCaseId) return Swal.fire('ไม่พบข้อมูล', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+  viewCaseLogs(editingCaseId);
+}
+
+
+
+async function loadAIPage(){
+  await checkAIStatus(false);
+}
+
+async function checkAIStatus(show = true){
+  if (show) loading('กำลังตรวจสถานะ AI');
+  const res = await callServer('getOpenAIStatus', [currentUser]);
+  if (show) Swal.close();
+
+  if (!res.ok) {
+    aiStatusBox.innerHTML = 'สถานะ AI: ❌ ' + res.message;
+    return;
+  }
+
+  aiStatusBox.innerHTML = res.configured
+    ? `สถานะ AI: ✅ พร้อมใช้งาน | Model: <b>${res.model}</b> | Key: <b>${res.maskedKey}</b> | Mode: <b>Script Properties</b>`
+    : 'สถานะ AI: ⚠️ ยังไม่ได้ตั้งค่า OPENAI_API_KEY ใน Script Properties';
+
+  if (typeof aiAdminSetupBox !== 'undefined' && aiAdminSetupBox) {
+    aiAdminSetupBox.classList.toggle('hidden', !(currentUser && currentUser.role === 'admin'));
+  }
+}
+
+async function saveOpenAISettings(){
+  if (!openaiApiKeyInput.value.trim()) {
+    return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอก OpenAI API Key', 'warning');
+  }
+
+  const confirm = await Swal.fire({
+    title: 'บันทึก OpenAI API Key?',
+    text: 'ระบบจะเก็บ API Key ใน Script Properties ของ Apps Script',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังบันทึก AI Key');
+  const res = await callServer('setupOpenAI', [openaiApiKeyInput.value.trim(), openaiModelInput.value.trim(), currentUser]);
+  Swal.close();
+
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+  if (res.ok) {
+    openaiApiKeyInput.value = '';
+    checkAIStatus(false);
+  }
+}
+
+async function aiCaseSummary(){
+  if (!editingCaseId) return Swal.fire('ไม่พบรายงาน', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  loading('AI กำลังวิเคราะห์รายเคส...');
+  const res = await callServer('generateAISummaryAdvanced', [editingCaseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+
+  const result = await Swal.fire({
+    title: '🤖 AI สรุปผลการสอบสวน',
+    html: `<textarea id="aiSummaryBox" style="width:100%;height:420px;border:1px solid #ddd;border-radius:12px;padding:12px;font-family:Sarabun,Arial">${res.summary}</textarea>`,
+    width: 900,
+    showCancelButton: true,
+    confirmButtonText: 'นำไปใส่ช่องสรุปรายงาน',
+    cancelButtonText: 'ปิด'
+  });
+
+  if (result.isConfirmed) {
+    const text = document.getElementById('aiSummaryBox').value;
+    const summaryEl = editDynamicForm.querySelector('[data-field="summary"]');
+    if (summaryEl) summaryEl.value = text;
+    Swal.fire('สำเร็จ', 'นำ AI Summary ไปใส่ช่องสรุปรายงานแล้ว กรุณากดบันทึกการแก้ไข', 'success');
+  }
+}
+
+async function aiControlMeasures(){
+  if (!editingCaseId) return Swal.fire('ไม่พบรายงาน', 'กรุณาเปิดรายงานจากทะเบียนก่อน', 'warning');
+
+  loading('AI กำลังเสนอแนะมาตรการควบคุมโรค...');
+  const res = await callServer('generateAIControlMeasures', [editingCaseId, currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+
+  const result = await Swal.fire({
+    title: '🛡️ AI มาตรการควบคุมโรค',
+    html: `<textarea id="aiControlBox" style="width:100%;height:420px;border:1px solid #ddd;border-radius:12px;padding:12px;font-family:Sarabun,Arial">${res.result}</textarea>`,
+    width: 900,
+    showCancelButton: true,
+    confirmButtonText: 'นำไปใส่ช่องมาตรการ',
+    cancelButtonText: 'ปิด'
+  });
+
+  if (result.isConfirmed) {
+    const text = document.getElementById('aiControlBox').value;
+    const controlEl = editDynamicForm.querySelector('[data-field="controlMeasureSummary"]') || editDynamicForm.querySelector('[data-field="controlMeasure"]');
+    if (controlEl) controlEl.value = text;
+    Swal.fire('สำเร็จ', 'นำมาตรการจาก AI ไปใส่ในแบบสอบสวนแล้ว กรุณากดบันทึกการแก้ไข', 'success');
+  }
+}
+
+async function aiCluster(){
+  loading('AI กำลังวิเคราะห์ Cluster...');
+  const res = await callServer('analyzeClusterAI', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+async function aiRisk(){
+  loading('AI กำลังวิเคราะห์ Risk Pattern...');
+  const res = await callServer('analyzeRiskPatternAI', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI วิเคราะห์ไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+async function aiExecutiveReport(){
+  loading('AI กำลังเขียนรายงานผู้บริหาร...');
+  const res = await callServer('generateAIExecutiveReport', [currentUser]);
+  Swal.close();
+
+  if (!res.ok) return Swal.fire('AI สร้างรายงานไม่สำเร็จ', res.message, 'error');
+  aiOutput.value = res.result;
+}
+
+function copyAIOutput(){
+  const text = aiOutput.value || '';
+  if (!text) return Swal.fire('ไม่มีข้อความ', 'ยังไม่มีผลวิเคราะห์ให้คัดลอก', 'info');
+  navigator.clipboard.writeText(text).then(
+    () => Swal.fire('คัดลอกแล้ว', 'คัดลอกผลวิเคราะห์ AI แล้ว', 'success'),
+    () => Swal.fire('คัดลอกไม่สำเร็จ', 'กรุณาเลือกข้อความแล้วคัดลอกเอง', 'warning')
+  );
+}
+
+
+
+async function clearOpenAISettings(){
+  const confirm = await Swal.fire({
+    title: 'ลบ OpenAI API Key?',
+    text: 'ระบบจะลบค่า OPENAI_API_KEY ออกจาก Script Properties',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ลบ',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+
+  loading('กำลังลบ API Key');
+  const res = await callServer('clearOpenAIKey', [currentUser]);
+  Swal.close();
+  Swal.fire(res.ok ? 'สำเร็จ' : 'ไม่สำเร็จ', res.message, res.ok ? 'success' : 'error');
+  checkAIStatus(false);
+}
+
+</script>
+</body>
+</html>
