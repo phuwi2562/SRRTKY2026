@@ -1,169 +1,675 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="th">
 <head>
 <base target="_top">
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d6e6e">
 <title>ระบบรายงานสอบสวนโรค รพ.สต.บ้านคำใหญ่</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  font-family: 'Sarabun', 'Tahoma', 'Segoe UI', sans-serif;
-  background: #f3f6f8; color: #1f2937; line-height: 1.5;
+/* ===== Design tokens ===== */
+:root {
+  --primary: #0f766e;
+  --primary-dark: #115e59;
+  --primary-light: #ccfbf1;
+  --primary-50: #f0fdfa;
+  --accent: #f59e0b;
+  --danger: #dc2626;
+  --success: #10b981;
+  --info: #3b82f6;
+
+  --bg: #f8fafc;
+  --bg-soft: #f1f5f9;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-soft: #94a3b8;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 30px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 20px 50px rgba(15, 23, 42, 0.15);
+
+  --gradient-brand: linear-gradient(135deg, #0f766e 0%, #06b6d4 50%, #0891b2 100%);
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px;
+
+  --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+
+  --font-sans: 'IBM Plex Sans Thai', 'Inter', 'Sarabun', 'Tahoma', system-ui, sans-serif;
 }
-.brand { color: #0d6e6e; }
-.bg-brand { background: #0d6e6e; color: white; }
+
+/* ===== Reset ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-sans); font-size: 14.5px; line-height: 1.55;
+  background: var(--bg); color: var(--text);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { border: none; background: none; cursor: pointer; }
+a { color: var(--primary); text-decoration: none; transition: color var(--transition); }
+a:hover { color: var(--primary-dark); }
+img { max-width: 100%; display: block; }
+::selection { background: var(--primary-light); color: var(--primary-dark); }
+
+/* ===== Buttons ===== */
 .btn {
-  display: inline-block; padding: 9px 18px; border-radius: 8px;
-  border: 1px solid transparent; cursor: pointer; font-size: 14px;
-  font-family: inherit; font-weight: 500; transition: all 0.15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 20px; border-radius: var(--radius-sm); font-weight: 500; font-size: 14px;
+  cursor: pointer; transition: all var(--transition); border: 1px solid transparent;
+  white-space: nowrap; user-select: none;
+  min-height: 40px;
 }
-.btn-primary { background: #0d6e6e; color: white; }
-.btn-primary:hover:not(:disabled) { background: #075050; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: white; color: #0d6e6e; border-color: #0d6e6e; }
-.btn-secondary:hover { background: #e6f4f4; }
-.btn-danger { background: #dc2626; color: white; }
-.btn-warning { background: #f59e0b; color: white; }
-.btn-sm { padding: 5px 12px; font-size: 13px; }
-input, select, textarea {
-  width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1;
-  border-radius: 6px; font-size: 14px; background: white;
-  font-family: inherit;
+.btn:active { transform: translateY(1px); }
+.btn-primary {
+  background: var(--primary); color: white;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); box-shadow: 0 4px 12px rgba(15,118,110,0.3); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-secondary {
+  background: var(--surface); color: var(--primary); border-color: var(--border-strong);
+}
+.btn-secondary:hover { background: var(--primary-50); border-color: var(--primary); }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover { background: #b91c1c; }
+.btn-warning { background: var(--accent); color: white; }
+.btn-warning:hover { background: #d97706; }
+.btn-ghost { background: transparent; color: var(--text-muted); }
+.btn-ghost:hover { background: var(--bg-soft); color: var(--text); }
+.btn-sm { padding: 6px 12px; font-size: 13px; min-height: 32px; }
+.btn-lg { padding: 12px 26px; font-size: 15px; min-height: 48px; }
+.btn-icon {
+  width: 38px; height: 38px; padding: 0; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ===== Forms ===== */
+input[type="text"], input[type="password"], input[type="email"], input[type="tel"],
+input[type="date"], input[type="time"], input[type="datetime-local"], input[type="number"],
+input:not([type]), select, textarea {
+  width: 100%; padding: 9px 12px; border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--surface); font-size: 14.5px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  -webkit-appearance: none; appearance: none;
+}
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%23475569' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;
 }
 input:focus, select:focus, textarea:focus {
-  outline: none; border-color: #0d6e6e; box-shadow: 0 0 0 2px rgba(13,110,110,0.15);
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
-label { display: block; font-size: 13px; color: #334155; margin-bottom: 3px; font-weight: 500; }
-.field { margin-bottom: 10px; }
-.row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-@media (max-width: 700px) {
-  .row, .row-3, .row-4 { grid-template-columns: 1fr; }
+input::placeholder, textarea::placeholder { color: var(--text-soft); }
+label {
+  display: block; font-size: 13px; font-weight: 500; color: var(--text-muted);
+  margin-bottom: 5px;
 }
+.field { margin-bottom: 14px; }
+
+/* Custom radio buttons */
+input[type="radio"], input[type="checkbox"] {
+  width: 16px; height: 16px; margin-right: 4px; accent-color: var(--primary); cursor: pointer;
+}
+
+/* Layout grids */
+.row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 768px) { .row, .row-3, .row-4 { grid-template-columns: 1fr; gap: 10px; } }
+
+/* ===== Card ===== */
 .card {
-  background: white; border-radius: 10px; padding: 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 15px;
+  background: var(--surface); border-radius: var(--radius-lg); padding: var(--space-6);
+  box-shadow: var(--shadow-sm); margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
 }
+.card:hover { box-shadow: var(--shadow); }
+@media (max-width:768px){ .card { padding: var(--space-4); border-radius: var(--radius); } }
+
 .section-title {
-  font-size: 16px; font-weight: 600; color: #075050;
-  border-bottom: 2px solid #e6f4f4; padding-bottom: 5px; margin-bottom: 12px;
+  font-size: 16px; font-weight: 600; color: var(--primary-dark);
+  margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid var(--primary-50);
+  display: flex; align-items: center; gap: 8px;
 }
+.section-title::before {
+  content: ''; display: inline-block; width: 4px; height: 18px;
+  background: var(--primary); border-radius: 2px;
+}
+
+/* ===== Badge ===== */
 .badge {
-  display: inline-block; padding: 2px 10px; border-radius: 999px;
-  font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; padding: 3px 11px;
+  border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1.4;
 }
 .badge-green { background: #d1fae5; color: #047857; }
 .badge-yellow { background: #fef3c7; color: #b45309; }
 .badge-red { background: #fee2e2; color: #b91c1c; }
 .badge-gray { background: #e5e7eb; color: #4b5563; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 7px 9px; border: 1px solid #e2e8f0; font-size: 13px; text-align: left; vertical-align: top; }
-th { background: #e6f4f4; font-weight: 600; }
-table.compact input { padding: 4px 6px; border: 1px solid transparent; }
-table.compact input:focus { border-color: #0d6e6e; }
-a { color: #0d6e6e; text-decoration: none; }
-a:hover { text-decoration: underline; }
+.badge-blue { background: #dbeafe; color: #1d4ed8; }
 
-/* Layout */
+/* ===== Table ===== */
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+table th, table td {
+  padding: 10px 12px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+table th {
+  background: var(--bg-soft); font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; font-size: 11.5px; letter-spacing: 0.04em;
+  border-bottom: 1.5px solid var(--border);
+}
+table tbody tr { transition: background var(--transition); }
+table tbody tr:hover { background: var(--primary-50); }
+table.compact th, table.compact td { padding: 6px 8px; font-size: 13px; border: 1px solid var(--border); }
+table.compact input { padding: 5px 8px; border: 1px solid transparent; background: transparent; border-radius: 4px; }
+table.compact input:focus { border-color: var(--primary); background: white; }
+.table-wrap { overflow-x: auto; margin: -2px; padding: 2px; border-radius: var(--radius); }
+
+/* ===== Layout ===== */
 #layout { display: flex; min-height: 100vh; }
-.sidebar { width: 240px; background: white; border-right: 1px solid #e2e8f0; flex-shrink: 0; }
-.sidebar-header { background: #0d6e6e; color: white; padding: 16px; }
-.sidebar-header h2 { font-size: 16px; }
-.sidebar-header .small { font-size: 12px; opacity: 0.9; }
-.sidebar nav { padding: 10px; }
+.sidebar {
+  width: 260px; background: var(--surface); flex-shrink: 0;
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  transition: transform var(--transition);
+}
+.sidebar-header {
+  background: var(--gradient-brand); color: white; padding: 22px 20px;
+  position: relative; overflow: hidden;
+}
+.sidebar-header::after {
+  content:''; position:absolute; right:-30px; top:-30px;
+  width: 120px; height: 120px; background: rgba(255,255,255,0.08);
+  border-radius: 50%;
+}
+.sidebar-header h2 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.sidebar-header .small { font-size: 12.5px; opacity: 0.92; margin-top: 2px; }
+.sidebar nav { padding: 14px 12px; flex: 1; overflow-y: auto; }
 .sidebar nav a {
-  display: block; padding: 8px 12px; border-radius: 6px;
-  color: #334155; font-size: 14px; margin-bottom: 2px;
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-radius: var(--radius-sm); color: var(--text-muted); font-size: 14px;
+  margin-bottom: 2px; font-weight: 500; transition: all var(--transition);
+  position: relative;
 }
-.sidebar nav a:hover { background: #e6f4f4; text-decoration: none; }
-.sidebar nav a.active { background: #0d6e6e; color: white; }
-.sidebar-foot { padding: 10px; border-top: 1px solid #e2e8f0; font-size: 12px; }
-main { flex: 1; min-width: 0; }
-header { background: white; padding: 14px 22px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-.content { padding: 22px; }
+.sidebar nav a:hover { background: var(--primary-50); color: var(--primary-dark); }
+.sidebar nav a.active {
+  background: var(--primary); color: white;
+  box-shadow: 0 4px 12px rgba(15,118,110,0.25);
+}
+.sidebar nav a.active::before {
+  content:''; position:absolute; left:-12px; top:50%; transform:translateY(-50%);
+  width: 4px; height: 60%; background: var(--primary); border-radius: 0 2px 2px 0;
+}
+.sidebar-foot { padding: 14px; border-top: 1px solid var(--border); font-size: 12.5px; }
+
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+header.app-header {
+  background: var(--surface); padding: 14px 24px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  position: sticky; top: 0; z-index: 20;
+  backdrop-filter: blur(10px); background: rgba(255,255,255,0.92);
+}
+.app-header h1 { font-size: 17px; font-weight: 600; color: var(--text); }
+.menu-toggle {
+  display: none; width: 40px; height: 40px; border-radius: var(--radius-sm);
+  align-items: center; justify-content: center; background: var(--bg-soft);
+}
+.menu-toggle:hover { background: var(--primary-light); }
+.content { padding: var(--space-6); flex: 1; }
+
 .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.flex-between { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 
-/* Login screen */
+/* Mobile sidebar */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
+    transform: translateX(-100%); box-shadow: var(--shadow-xl);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .menu-toggle { display: inline-flex; }
+  .content { padding: var(--space-4); }
+  .sidebar-overlay {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 99;
+    opacity: 0; pointer-events: none; transition: opacity var(--transition);
+  }
+  .sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+}
+
+/* ===== Login page (Mobile-first: full-screen by default) ===== */
 .login-page {
-  background: linear-gradient(135deg, #0d6e6e 0%, #06b6d4 100%);
-  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  min-height: 100vh; min-height: 100dvh;
+  width: 100vw;
+  display: flex; flex-direction: column;
+  background: var(--gradient-brand);
+  position: relative; overflow: auto;
+  margin: 0; padding: 0;
 }
+.login-page::before, .login-page::after { display: none; }
 .login-card {
-  background: white; border-radius: 14px; padding: 35px; max-width: 400px; width: 100%;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  background: white;
+  width: 100%; max-width: 100%;
+  flex: 1 0 100%;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 32px 24px;
+  padding-top: max(40px, env(safe-area-inset-top));
+  padding-bottom: max(40px, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; justify-content: center;
+  position: relative; z-index: 1;
+  animation: slideUp 0.4s cubic-bezier(0.4,0,0.2,1);
+  min-height: 100vh; min-height: 100dvh;
+}
+.login-card form,
+.login-card > .text-center,
+.login-card > div:last-child {
+  width: 100%; max-width: 420px;
+  margin-left: auto; margin-right: auto;
 }
 
-/* Dashboard cards */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-@media (max-width:700px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-.stat { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-.stat .num { font-size: 26px; font-weight: 700; color: #0d6e6e; }
-.stat .lbl { font-size: 12px; color: #64748b; }
-.bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; padding: 10px 0; }
-.bar { flex: 1; background: #0d6e6e; border-radius: 4px 4px 0 0; position: relative; min-height: 2px; }
-.bar .lbl { position: absolute; bottom: -22px; left: 0; right: 0; text-align: center; font-size: 11px; color: #475569; }
-.bar .val { position: absolute; top: -18px; left: 0; right: 0; text-align: center; font-size: 11px; color: #0d6e6e; font-weight: 600; }
-.disease-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.disease-grid button {
-  text-align: left; background: white; border-radius: 10px; padding: 14px; cursor: pointer;
-  border: 2px solid transparent; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  font-family: inherit; font-size: 14px; color: inherit;
+/* Desktop: nice centered card with gradient around (≥769px) */
+@media (min-width: 769px) {
+  .login-page {
+    align-items: center; justify-content: center;
+    padding: 20px; overflow: hidden;
+  }
+  .login-page::before, .login-page::after {
+    content: ''; display: block; position: absolute; border-radius: 50%; pointer-events: none;
+    background: rgba(255,255,255,0.08); animation: float 20s ease-in-out infinite;
+  }
+  .login-page::before { width: 400px; height: 400px; top: -100px; right: -100px; }
+  .login-page::after { width: 300px; height: 300px; bottom: -50px; left: -80px; animation-delay: -10s; }
+  @keyframes float {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(20px,-20px) scale(1.05); }
+  }
+  .login-card {
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    padding: 40px;
+    max-width: 420px; flex: 0 0 auto;
+    min-height: 0;
+    padding-top: 40px; padding-bottom: 40px;
+  }
 }
-.disease-grid button:hover { border-color: #0d6e6e; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.disease-grid .icon { font-size: 24px; margin-bottom: 6px; }
-.disease-grid .nm { font-weight: 600; color: #1e293b; }
-.disease-grid .en { font-size: 11px; color: #64748b; margin-top: 4px; }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.login-card .logo {
+  width: 72px; height: 72px; border-radius: 22px; background: var(--gradient-brand);
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
+  font-size: 36px; box-shadow: 0 8px 24px rgba(15,118,110,0.3);
+}
+.login-card h1 { color: var(--primary-dark); font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.login-card .subtitle { font-size: 13.5px; color: var(--text-muted); margin-top: 3px; }
+
+/* ===== Dashboard stats ===== */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: var(--space-6); }
+@media (max-width: 768px) { .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
+.stat {
+  background: var(--surface); border-radius: var(--radius-lg); padding: 18px 20px;
+  border: 1px solid var(--border); transition: all var(--transition);
+  position: relative; overflow: hidden;
+}
+.stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.stat::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background: var(--primary); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.stat.danger::before { background: var(--danger); }
+.stat.warning::before { background: var(--accent); }
+.stat.success::before { background: var(--success); }
+.stat .num { font-size: 30px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; line-height: 1.1; }
+.stat.danger .num { color: var(--danger); }
+.stat.warning .num { color: var(--accent); }
+.stat.success .num { color: var(--success); }
+.stat .lbl { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
+.stat .extra { font-size: 11.5px; color: var(--text-soft); margin-top: 4px; }
+
+/* Charts */
+.bar-chart { display: flex; align-items: flex-end; gap: 12px; height: 180px; padding: 28px 8px 28px 8px; }
+.bar {
+  flex: 1; background: linear-gradient(180deg, var(--primary) 0%, #06b6d4 100%);
+  border-radius: 6px 6px 0 0; position: relative; min-height: 4px;
+  transition: all var(--transition); cursor: default;
+}
+.bar:hover { filter: brightness(1.1); transform: scaleY(1.02); transform-origin: bottom; }
+.bar .lbl { position: absolute; bottom: -24px; left: 0; right: 0; text-align: center; font-size: 11.5px; color: var(--text-muted); font-weight: 500; }
+.bar .val { position: absolute; top: -22px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--primary-dark); font-weight: 700; }
+
+.legend-row { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--border); }
+.legend-row:last-child { border: none; }
+.legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.legend-row .name { flex: 1; font-size: 13.5px; color: var(--text); }
+.legend-row .value { font-weight: 600; color: var(--primary-dark); font-size: 14px; }
+
+/* Disease grid */
+.disease-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.disease-grid button {
+  text-align: left; background: var(--surface); border-radius: var(--radius-lg); padding: 18px;
+  border: 2px solid var(--border); transition: all var(--transition);
+  display: flex; flex-direction: column; gap: 4px;
+  position: relative; overflow: hidden;
+}
+.disease-grid button::before {
+  content:''; position:absolute; top:0; left:0; right:0; height: 3px;
+  background: var(--disease-color, var(--primary)); transform: scaleX(0); transform-origin: left;
+  transition: transform var(--transition);
+}
+.disease-grid button:hover {
+  border-color: var(--disease-color, var(--primary));
+  transform: translateY(-3px); box-shadow: var(--shadow-lg);
+}
+.disease-grid button:hover::before { transform: scaleX(1); }
+.disease-grid .icon {
+  width: 48px; height: 48px; border-radius: 12px; display: flex;
+  align-items: center; justify-content: center; font-size: 26px;
+  background: var(--bg-soft); margin-bottom: 8px;
+}
+.disease-grid .nm { font-weight: 600; color: var(--text); font-size: 15px; }
+.disease-grid .en { font-size: 12px; color: var(--text-muted); }
+.disease-grid .code { font-size: 11px; color: var(--text-soft); margin-top: 6px; font-family: 'Inter', monospace; }
 
 /* Symptom rows */
-.sym-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-@media (max-width:700px) { .sym-grid { grid-template-columns: 1fr; } }
+.sym-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 768px) { .sym-grid { grid-template-columns: 1fr; } }
 .sym {
-  display: grid; grid-template-columns: 1.5fr 1fr; align-items: center;
-  padding: 5px 9px; background: #f8fafc; border-radius: 5px; font-size: 13px;
+  display: grid; grid-template-columns: 1.4fr 1fr; align-items: center; gap: 8px;
+  padding: 9px 14px; background: var(--bg-soft); border-radius: var(--radius-sm);
+  font-size: 13.5px; transition: background var(--transition);
 }
-.sym .opts { display: flex; gap: 7px; font-size: 12px; }
-.sym .opts label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; margin: 0; font-weight: normal; }
+.sym:hover { background: var(--primary-50); }
+.sym .opts { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.sym .opts label {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  margin: 0; font-weight: 500; user-select: none;
+}
 
 /* Toast */
 .toast {
-  position: fixed; top: 16px; right: 16px; padding: 9px 16px; border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; font-size: 14px;
+  position: fixed; top: 20px; right: 20px; padding: 12px 18px;
+  border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 1000;
+  font-size: 14px; font-weight: 500; max-width: 360px;
+  animation: toastIn 0.3s cubic-bezier(0.4,0,0.2,1);
+  display: flex; align-items: center; gap: 10px;
 }
-.toast.success { background: #10b981; color: white; }
-.toast.error { background: #ef4444; color: white; }
-.toast.info { background: #3b82f6; color: white; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(20px) scale(0.95); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+.toast.success { background: var(--success); color: white; }
+.toast.error { background: var(--danger); color: white; }
+.toast.info { background: var(--info); color: white; }
 
 /* Spinner */
 .spinner {
-  width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #0d6e6e;
-  border-radius: 50%; display: inline-block; animation: spin 0.8s linear infinite;
+  width: 18px; height: 18px; border: 2.5px solid rgba(15,118,110,0.18);
+  border-top-color: var(--primary); border-radius: 50%;
+  display: inline-block; animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Image upload */
-.thumb { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; }
+/* Image thumb */
+.thumb {
+  width: 96px; height: 96px; object-fit: cover; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border); cursor: pointer; transition: all var(--transition);
+}
+.thumb:hover { border-color: var(--primary); transform: scale(1.04); box-shadow: var(--shadow); }
+.thumb-wrap { position: relative; display: inline-block; margin: 4px; }
+.thumb-wrap .rm-btn {
+  position: absolute; top: -8px; right: -8px; width: 24px; height: 24px;
+  border-radius: 50%; background: var(--danger); color: white;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+  border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  opacity: 0; transition: opacity var(--transition);
+}
+.thumb-wrap:hover .rm-btn { opacity: 1; }
+
+/* Loading overlay */
+#loading {
+  position: fixed; inset: 0; background: rgba(255,255,255,0.85);
+  z-index: 200; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+#loading .spinner { width: 44px; height: 44px; border-width: 3px; }
+
+/* Empty state */
+.empty {
+  text-align: center; padding: 60px 20px; color: var(--text-muted);
+}
+.empty .icon-big { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+
+/* Sticky action bar */
+.sticky-bar {
+  background: var(--surface); border-radius: var(--radius-lg);
+  padding: var(--space-4); margin-bottom: var(--space-4);
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+  border: 1px solid var(--border);
+  position: sticky; bottom: 12px; z-index: 30;
+}
 
 /* Print styles */
 @media print {
-  .no-print { display: none !important; }
-  body { background: white; font-size: 12pt; }
-  main { padding: 0; }
-  header { display: none; }
-  .card { box-shadow: none; padding: 0; margin-bottom: 8px; }
-  .content { padding: 0; }
+  .no-print, .sidebar, .app-header { display: none !important; }
+  body { background: white; font-size: 11pt; }
+  main, .content { padding: 0 !important; }
+  .card { box-shadow: none; border: none; padding: 0; margin-bottom: 8px; }
+  table { page-break-inside: auto; }
+  table tr { page-break-inside: avoid; }
 }
 
+/* Utilities */
 .hidden { display: none !important; }
 .text-center { text-align: center; }
-.mt-3 { margin-top: 12px; } .mt-2 { margin-top: 8px; } .mt-4 { margin-top: 16px; }
-.mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; }
-.text-sm { font-size: 13px; } .text-xs { font-size: 11px; }
-.text-slate { color: #64748b; } .text-red { color: #dc2626; }
-.font-bold { font-weight: 700; } .font-semibold { font-weight: 600; }
-.bg-amber { background: #fef3c7; padding: 12px; border-left: 4px solid #f59e0b; border-radius: 4px; }
-.bg-red-soft { background: #fee2e2; padding: 12px; border-left: 4px solid #dc2626; border-radius: 4px; color: #991b1b; }
+.text-right { text-align: right; }
+.mt-1{margin-top:4px}.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mt-5{margin-top:20px}.mt-6{margin-top:24px}
+.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}
+.text-xs{font-size:11.5px}.text-sm{font-size:13px}.text-base{font-size:14.5px}.text-lg{font-size:16px}.text-xl{font-size:20px}
+.text-muted{color:var(--text-muted)}.text-soft{color:var(--text-soft)}.text-danger{color:var(--danger)}.text-success{color:var(--success)}
+.font-medium{font-weight:500}.font-semibold{font-weight:600}.font-bold{font-weight:700}
+.bg-amber {
+  background: linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%);
+  padding: 14px 16px; border-left: 4px solid var(--accent); border-radius: var(--radius-sm);
+}
+.bg-red-soft {
+  background: linear-gradient(90deg, #fee2e2 0%, #fef2f2 100%);
+  padding: 14px 16px; border-left: 4px solid var(--danger);
+  border-radius: var(--radius-sm); color: #991b1b;
+}
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+.font-mono { font-family: 'Inter', 'SF Mono', Monaco, monospace; font-size: 0.92em; }
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px;
+}
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ===== Mobile-first overrides (≤ 768px) ===== */
+@media (max-width: 768px) {
+  body { font-size: 15.5px; line-height: 1.6; }
+  /* Prevent iOS auto-zoom: input font ≥ 16px */
+  input[type="text"], input[type="password"], input[type="email"], input[type="tel"],
+  input[type="date"], input[type="time"], input[type="datetime-local"], input[type="number"],
+  input:not([type]), select, textarea {
+    font-size: 16px !important; padding: 11px 14px;
+  }
+  label { font-size: 14px; margin-bottom: 6px; font-weight: 600; }
+  .field { margin-bottom: 16px; }
+
+  /* Bigger touch buttons */
+  .btn { min-height: 48px; padding: 12px 20px; font-size: 15px; border-radius: 10px; }
+  .btn-sm { min-height: 40px; padding: 9px 14px; font-size: 14px; }
+  .btn-lg { min-height: 54px; padding: 14px 22px; font-size: 16px; }
+  .btn-icon { width: 44px; height: 44px; font-size: 18px; }
+
+  /* Card spacing */
+  .card { padding: 16px; border-radius: 12px; margin-bottom: 14px; }
+  .section-title { font-size: 17px; margin-bottom: 14px; padding-bottom: 10px; }
+
+  /* Header — make it more prominent */
+  header.app-header { padding: 12px 16px; }
+  .app-header h1 { font-size: 18px; font-weight: 700; }
+  .menu-toggle {
+    width: 44px; height: 44px; min-width: 44px; background: var(--primary-50);
+    border: 1px solid var(--primary-light);
+  }
+  .menu-toggle svg { width: 22px; height: 22px; }
+
+  /* Sidebar — wider on mobile, bigger items */
+  .sidebar { width: 280px; }
+  .sidebar-header { padding: 24px 20px; }
+  .sidebar-header h2 { font-size: 18px; }
+  .sidebar-header .small { font-size: 13.5px; }
+  .sidebar nav { padding: 16px 12px; }
+  .sidebar nav a {
+    padding: 14px 16px; font-size: 16px; margin-bottom: 4px;
+    min-height: 50px; gap: 14px; border-radius: 10px;
+  }
+  .sidebar nav a > span:first-child { font-size: 22px; }
+
+  /* Stats grid 2x2 with bigger cards */
+  .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { padding: 16px 14px; border-radius: 12px; }
+  .stat .num { font-size: 28px; }
+  .stat .lbl { font-size: 13px; }
+  .stat .extra { font-size: 11px; }
+
+  /* Disease grid — 2 columns on mobile, more readable */
+  .disease-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .disease-grid button { padding: 14px 12px; }
+  .disease-grid .icon { width: 44px; height: 44px; font-size: 24px; }
+  .disease-grid .nm { font-size: 14px; }
+  .disease-grid .en { font-size: 11px; }
+
+  /* Tables — horizontal scroll with shadow hint */
+  .table-wrap, .row, .row-3, .row-4 {
+    -webkit-overflow-scrolling: touch;
+  }
+  table { font-size: 14px; }
+  th, td { padding: 10px 12px; }
+  th { font-size: 12px; }
+
+  /* Symptoms — better mobile layout */
+  .sym { grid-template-columns: 1fr; gap: 6px; padding: 11px 14px; }
+  .sym .opts { gap: 14px; padding-top: 4px; }
+  .sym .opts label { font-size: 14px; padding: 4px 0; }
+  .sym .opts input[type="radio"] { width: 20px; height: 20px; }
+
+  /* Login page mobile — extra tweaks (base full-screen handled at top) */
+  .login-card .logo { width: 80px; height: 80px; font-size: 38px; border-radius: 22px; margin-bottom: 18px; }
+  .login-card h1 { font-size: 24px; }
+  .login-card .subtitle { font-size: 15px; }
+  .login-card input { padding: 14px 16px !important; font-size: 16px !important; }
+  .login-card .btn-lg { min-height: 56px; font-size: 17px; font-weight: 600; }
+
+  /* GPS row */
+  .gps-row { gap: 10px; }
+  .gps-row .field { min-width: 100%; }
+
+  /* Map height fits screen */
+  .map-container { height: 400px; }
+  .map-container.full { height: calc(100vh - 280px); min-height: 380px; }
+  .map-container.small { height: 200px; }
+
+  /* Sticky bottom action bar */
+  .sticky-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    margin: 0; border-radius: 16px 16px 0 0; padding: 12px 14px 14px;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
+    border-top: 1px solid var(--border); border-left: none; border-right: none; border-bottom: none;
+    z-index: 40; backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.96);
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+  .sticky-bar .flex { gap: 6px; }
+  .sticky-bar .btn { flex: 1 1 calc(50% - 4px); min-height: 46px; padding: 10px 8px; font-size: 13.5px; }
+
+  /* Bottom tab navigation (NEW) */
+  .bottom-tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
+    background: white; border-top: 1px solid var(--border);
+    display: flex; padding: 6px 4px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+  }
+  .bottom-tabs a {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: 8px 4px; color: var(--text-soft); text-decoration: none;
+    gap: 2px; border-radius: 8px; min-height: 56px; justify-content: center;
+    transition: all 0.15s;
+  }
+  .bottom-tabs a span:first-child { font-size: 22px; line-height: 1; }
+  .bottom-tabs a span:last-child { font-size: 11px; font-weight: 500; }
+  .bottom-tabs a.active { color: var(--primary); }
+  .bottom-tabs a.active span:first-child { transform: translateY(-2px); }
+  /* Add bottom padding to content so bottom-tabs don't cover it */
+  main { padding-bottom: 70px; }
+
+  /* Toast adjustments */
+  .toast { top: 12px; right: 12px; left: 12px; max-width: none; }
+
+  /* Form heading more prominent */
+  .row, .row-3, .row-4 { gap: 12px; }
+
+  /* Sidebar overlay full height including iOS bar */
+  .sidebar { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Smaller phones (≤ 380px) */
+@media (max-width: 380px) {
+  body { font-size: 14.5px; }
+  .stats { grid-template-columns: 1fr; }
+  .disease-grid { grid-template-columns: 1fr; }
+  .sticky-bar .btn { font-size: 12.5px; padding: 9px 6px; min-height: 42px; }
+  .bottom-tabs a span:last-child { font-size: 10px; }
+}
+
+/* Hide bottom-tabs on desktop */
+@media (min-width: 769px) {
+  .bottom-tabs { display: none !important; }
+}
+
+/* Map */
+.map-container { width: 100%; height: 480px; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); }
+.map-container.small { height: 220px; }
+.map-container.full { height: calc(100vh - 200px); min-height: 500px; }
+.gps-row { display: flex; gap: 8px; align-items: end; margin-bottom: 12px; flex-wrap: wrap; }
+.gps-row .field { flex: 1; min-width: 130px; margin-bottom: 0; }
+.legend-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; font-size: 13px;
+}
+.marker-icon {
+  width: 36px; height: 36px; border-radius: 50% 50% 50% 0;
+  background: var(--primary); transform: rotate(-45deg);
+  display: flex; align-items: center; justify-content: center;
+  border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.marker-icon span { transform: rotate(45deg); color: white; font-size: 16px; font-weight: 700; }
+.leaflet-popup-content { font-family: var(--font-sans); margin: 12px 14px !important; line-height: 1.5; }
+.leaflet-popup-content b { color: var(--primary-dark); }
+.leaflet-control-attribution { font-size: 10px; }
 </style>
 </head>
 <body>
@@ -177,27 +683,27 @@ header { background: white; padding: 14px 22px; border-bottom: 1px solid #e2e8f0
 <!-- ===== LOGIN PAGE (default visible — JS will hide when authenticated) ===== -->
 <div id="login-page" class="login-page">
   <div class="login-card">
-    <div class="text-center mb-3">
-      <div style="font-size:36px">🏥</div>
-      <h1 style="color:#075050; font-size:18px; font-weight:700">งานควบคุมโรค</h1>
-      <div class="text-sm text-slate">โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคำใหญ่</div>
-      <div class="text-xs text-slate mt-2">อ.ห้วยเม็ก จ.กาฬสินธุ์</div>
+    <div class="text-center mb-4">
+      <div class="logo">🏥</div>
+      <h1>งานควบคุมโรค</h1>
+      <div class="subtitle">โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคำใหญ่</div>
+      <div class="text-xs text-soft mt-1">อ.ห้วยเม็ก จ.กาฬสินธุ์</div>
     </div>
     <form id="loginForm">
       <div class="field">
-        <label>ชื่อผู้ใช้ (Username)</label>
-        <input type="text" id="loginUser" autocomplete="username" required autofocus>
+        <label>ชื่อผู้ใช้</label>
+        <input type="text" id="loginUser" autocomplete="username" required autofocus placeholder="username">
       </div>
       <div class="field">
-        <label>รหัสผ่าน (Password)</label>
-        <input type="password" id="loginPass" autocomplete="current-password" required>
+        <label>รหัสผ่าน</label>
+        <input type="password" id="loginPass" autocomplete="current-password" required placeholder="••••••••">
       </div>
-      <div id="loginError" class="text-sm text-red hidden"></div>
-      <button type="submit" id="loginBtn" class="btn btn-primary" style="width:100%; margin-top:8px">เข้าสู่ระบบ</button>
+      <div id="loginError" class="bg-red-soft text-sm hidden mb-3"></div>
+      <button type="submit" id="loginBtn" class="btn btn-primary btn-lg" style="width:100%">เข้าสู่ระบบ</button>
     </form>
-    <div class="text-xs text-slate text-center mt-4" style="border-top:1px solid #e2e8f0; padding-top:12px">
-      เฉพาะเจ้าหน้าที่งานควบคุมโรคเท่านั้น<br>
-      <span style="color:#94a3b8">การเข้าใช้งานจะถูกบันทึก</span>
+    <div class="text-xs text-muted text-center mt-5" style="border-top:1px solid var(--border); padding-top:14px">
+      🔒 เฉพาะเจ้าหน้าที่งานควบคุมโรคเท่านั้น<br>
+      <span class="text-soft mt-1" style="display:inline-block">การเข้าใช้งานจะถูกบันทึกในระบบตรวจสอบ</span>
     </div>
   </div>
 </div>
@@ -205,18 +711,18 @@ header { background: white; padding: 14px 22px; border-bottom: 1px solid #e2e8f0
 <!-- ===== CHANGE PASSWORD PAGE ===== -->
 <div id="cp-page" class="login-page hidden">
   <div class="login-card">
-    <div class="text-center mb-3">
-      <div style="font-size:36px">🔐</div>
-      <h1 style="color:#075050; font-size:18px">เปลี่ยนรหัสผ่าน</h1>
-      <div class="text-sm text-slate">กรุณาเปลี่ยนรหัสผ่านก่อนใช้งานครั้งแรก</div>
+    <div class="text-center mb-4">
+      <div class="logo" style="background:linear-gradient(135deg,#f59e0b,#dc2626)">🔐</div>
+      <h1>เปลี่ยนรหัสผ่าน</h1>
+      <div class="subtitle">กรุณาเปลี่ยนรหัสผ่านก่อนใช้งานครั้งแรก</div>
     </div>
     <form id="cpForm">
       <div class="field"><label>รหัสผ่านเดิม</label><input type="password" id="cpOld" required></div>
       <div class="field"><label>รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)</label><input type="password" id="cpNew" required minlength="8"></div>
       <div class="field"><label>ยืนยันรหัสผ่านใหม่</label><input type="password" id="cpNew2" required minlength="8"></div>
-      <div id="cpError" class="text-sm text-red hidden"></div>
-      <button type="submit" id="cpBtn" class="btn btn-primary" style="width:100%; margin-top:8px">เปลี่ยนรหัสผ่าน</button>
-      <button type="button" class="btn btn-secondary" style="width:100%; margin-top:6px" onclick="doLogout()">ออกจากระบบ</button>
+      <div id="cpError" class="bg-red-soft text-sm hidden mb-3"></div>
+      <button type="submit" id="cpBtn" class="btn btn-primary btn-lg" style="width:100%">เปลี่ยนรหัสผ่าน</button>
+      <button type="button" class="btn btn-ghost" style="width:100%; margin-top:8px" onclick="doLogout()">ออกจากระบบ</button>
     </form>
   </div>
 </div>
@@ -224,47 +730,91 @@ header { background: white; padding: 14px 22px; border-bottom: 1px solid #e2e8f0
 <!-- ===== APP (sidebar + main) ===== -->
 <div id="app" class="hidden">
   <div id="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h2>งานควบคุมโรค</h2>
         <div class="small">รพ.สต.บ้านคำใหญ่</div>
-        <div class="small" style="opacity:0.75">อ.ห้วยเม็ก จ.กาฬสินธุ์</div>
+        <div class="small" style="opacity:0.78">อ.ห้วยเม็ก จ.กาฬสินธุ์</div>
       </div>
       <nav id="navMenu">
-        <a href="#" data-r="dashboard" class="active">📊 Dashboard</a>
-        <a href="#" data-r="new">➕ สร้างรายงานใหม่</a>
-        <a href="#" data-r="list">📋 รายงานทั้งหมด</a>
-        <a href="#" data-r="team">👥 ทีมสอบสวนโรค</a>
-        <a href="#" data-r="users" class="adminOnly hidden">🔐 จัดการผู้ใช้</a>
-        <a href="#" data-r="audit" class="adminOnly hidden">📜 Audit Log</a>
-        <a href="#" data-r="settings">⚙️ ตั้งค่า</a>
-        <a href="#" data-r="profile">👤 โปรไฟล์</a>
+        <a href="#" data-r="dashboard" class="active"><span>📊</span> <span>Dashboard</span></a>
+        <a href="#" data-r="new"><span>➕</span> <span>สร้างรายงานใหม่</span></a>
+        <a href="#" data-r="list"><span>📋</span> <span>รายงานทั้งหมด</span></a>
+        <a href="#" data-r="map"><span>🗺️</span> <span>แผนที่การเกิดโรค</span></a>
+        <a href="#" data-r="team"><span>👥</span> <span>ทีมสอบสวนโรค</span></a>
+        <a href="#" data-r="users" class="adminOnly hidden"><span>🔐</span> <span>จัดการผู้ใช้</span></a>
+        <a href="#" data-r="audit" class="adminOnly hidden"><span>📜</span> <span>Audit Log</span></a>
+        <a href="#" data-r="settings"><span>⚙️</span> <span>ตั้งค่า</span></a>
+        <a href="#" data-r="profile"><span>👤</span> <span>โปรไฟล์</span></a>
       </nav>
       <div class="sidebar-foot">
         <div id="userInfo" class="text-xs"></div>
-        <button class="btn btn-secondary btn-sm" style="width:100%; margin-top:8px" onclick="doLogout()">ออกจากระบบ</button>
-        <div class="text-xs text-slate mt-2">v3.0 — Cloud<br>กองระบาดวิทยา กรมควบคุมโรค</div>
+        <button class="btn btn-secondary btn-sm mt-2" style="width:100%" onclick="doLogout()">🚪 ออกจากระบบ</button>
+        <div class="text-xs text-soft mt-3 text-center">v3.1 · Cloud<br>กองระบาดวิทยา กรมควบคุมโรค</div>
       </div>
     </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
     <main>
-      <header>
-        <h1 id="pageTitle" style="font-size:17px">Dashboard</h1>
-        <div class="text-sm text-slate">ส่งรายงานไปยัง: <span id="hSentTo">สสอ.ห้วยเม็ก</span></div>
+      <header class="app-header">
+        <div class="flex">
+          <button class="menu-toggle" onclick="toggleSidebar()" aria-label="เปิดเมนู">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <h1 id="pageTitle">Dashboard</h1>
+        </div>
+        <div class="text-sm text-muted hidden-mobile">📨 ส่งรายงานไปยัง: <span class="font-medium" id="hSentTo">สสอ.ห้วยเม็ก</span></div>
       </header>
       <div class="content" id="content">
-        <div class="text-center" style="padding:40px"><div class="spinner" style="width:32px;height:32px"></div><div class="mt-2 text-slate">กำลังโหลด...</div></div>
+        <div class="empty"><div class="spinner" style="width:36px;height:36px"></div><div class="mt-3">กำลังโหลด...</div></div>
       </div>
     </main>
+
+    <!-- Bottom Tab Navigation (mobile only) -->
+    <nav class="bottom-tabs" id="bottomTabs">
+      <a href="#" data-r="dashboard" class="active"><span>📊</span><span>Dashboard</span></a>
+      <a href="#" data-r="list"><span>📋</span><span>รายงาน</span></a>
+      <a href="#" data-r="new"><span>➕</span><span>สร้างใหม่</span></a>
+      <a href="#" data-r="map"><span>🗺️</span><span>แผนที่</span></a>
+      <a href="#" onclick="toggleSidebar(true);return false;"><span>☰</span><span>เพิ่มเติม</span></a>
+    </nav>
   </div>
 </div>
 
 <!-- Loading overlay -->
-<div id="loading" class="hidden" style="position:fixed; inset:0; background:rgba(255,255,255,0.85); z-index:50; display:flex; align-items:center; justify-content:center;">
-  <div class="text-center"><div class="spinner" style="width:36px;height:36px"></div><div class="mt-2 text-slate">กำลังโหลด...</div></div>
+<div id="loading" class="hidden">
+  <div class="text-center">
+    <div class="spinner"></div>
+    <div class="mt-3 text-muted font-medium">กำลังโหลด...</div>
+  </div>
 </div>
+
+<style>
+.hidden-mobile { display: block; }
+@media (max-width: 768px) { .hidden-mobile { display: none; } }
+</style>
 
 <script>
 'use strict';
+
+/* ===== Village mapping (ตำบลคำใหญ่ อำเภอห้วยเม็ก กาฬสินธุ์) ===== */
+const VILLAGES = {
+  '1': 'หมู่ 1 บ้านหัวสนาม',
+  '2': 'หมู่ 2 บ้านคำเจริญ',
+  '3': 'หมู่ 3 บ้านชัยศรี',
+  '4': 'หมู่ 4 บ้านนาดี',
+  '5': 'หมู่ 5 บ้านห้วยยาง',
+  '6': 'หมู่ 6 บ้านห้วยม่วง',
+  '7': 'หมู่ 7 บ้านคำใหญ่',
+  '8': 'หมู่ 8 บ้านคำถาวร',
+  '9': 'หมู่ 9 บ้านโพธิ์ทอง',
+  '10': 'หมู่ 10 บ้านโคกป่ากุง',
+  '11': 'หมู่ 11 บ้านคำใหญ่',
+  '12': 'หมู่ 12 บ้านคำเจริญ'
+};
+
+/* ===== Map default center (ต.คำใหญ่ อ.ห้วยเม็ก จ.กาฬสินธุ์) ===== */
+const MAP_CENTER = [16.6320, 103.1830];
+const MAP_ZOOM = 13;
 
 /* ===== Disease catalog ===== */
 const DISEASES = {
@@ -321,11 +871,24 @@ function toast(msg, type) {
   type = type || 'info';
   const el = document.createElement('div');
   el.className = 'toast ' + type;
-  el.textContent = msg;
+  const icon = type==='success'?'✓':type==='error'?'✗':'ℹ';
+  el.innerHTML = '<span style="font-size:18px">'+icon+'</span><span>'+escHtml(msg)+'</span>';
   document.body.appendChild(el);
-  setTimeout(function(){ el.remove(); }, 3500);
+  setTimeout(function(){
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(20px)';
+    el.style.transition = 'all 0.3s';
+    setTimeout(function(){ el.remove(); }, 300);
+  }, 3200);
 }
 function showLoading(show) { $('#loading').classList.toggle('hidden', !show); }
+function toggleSidebar(open) {
+  const sb = $('#sidebar'), ov = $('#sidebarOverlay');
+  if (!sb || !ov) return;
+  const willOpen = open === undefined ? !sb.classList.contains('open') : open;
+  sb.classList.toggle('open', willOpen);
+  ov.classList.toggle('open', willOpen);
+}
 function badge(s) {
   if(s==='submitted') return '<span class="badge badge-green">ส่งแล้ว</span>';
   if(s==='completed') return '<span class="badge badge-yellow">เสร็จสมบูรณ์</span>';
@@ -345,6 +908,14 @@ document.addEventListener('DOMContentLoaded', function(){
   $('#loginForm').addEventListener('submit', handleLogin);
   $('#cpForm').addEventListener('submit', handleChangePassword);
   $$('#navMenu a').forEach(function(a){
+    a.addEventListener('click', function(e){
+      e.preventDefault();
+      navigate(a.getAttribute('data-r'));
+      if (window.innerWidth <= 768) toggleSidebar(false);
+    });
+  });
+  // Bottom tabs (mobile)
+  $$('#bottomTabs a[data-r]').forEach(function(a){
     a.addEventListener('click', function(e){
       e.preventDefault();
       navigate(a.getAttribute('data-r'));
@@ -381,7 +952,16 @@ function showApp() {
   $('#cp-page').classList.add('hidden');
   $('#app').classList.remove('hidden');
   const u = Session.user || {};
-  $('#userInfo').innerHTML = '<div class="font-semibold">'+escHtml(u.fullName||u.username)+'</div><div class="text-slate">'+escHtml(u.position||'')+'</div><div class="text-xs text-slate">'+(u.role==='admin'?'🔐 admin':'👤 เจ้าหน้าที่')+'</div>';
+  $('#userInfo').innerHTML =
+    '<div style="display:flex; align-items:center; gap:10px; padding-bottom:8px">'+
+      '<div style="width:36px; height:36px; border-radius:50%; background:var(--gradient-brand); color:white; display:flex; align-items:center; justify-content:center; font-weight:600; flex-shrink:0">'+
+        escHtml(((u.fullName||u.username||'?')[0]||'?').toUpperCase())+'</div>'+
+      '<div style="min-width:0; flex:1">'+
+        '<div class="font-semibold" style="font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">'+escHtml(u.fullName||u.username)+'</div>'+
+        '<div class="text-xs text-muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">'+escHtml(u.position||'')+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="text-xs"><span class="badge '+(u.role==='admin'?'badge-red':'badge-blue')+'">'+(u.role==='admin'?'🔐 admin':'👤 เจ้าหน้าที่')+'</span></div>';
   $$('.adminOnly').forEach(function(el){ el.classList.toggle('hidden', u.role!=='admin'); });
   navigate('dashboard');
 }
@@ -443,7 +1023,8 @@ function doLogout() {
 /* ===== Router ===== */
 function navigate(route, param) {
   $$('#navMenu a').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-r')===route); });
-  const titles = {dashboard:'Dashboard',new:'สร้างรายงานใหม่',list:'รายงานทั้งหมด',team:'ทีมสอบสวนโรค',settings:'ตั้งค่า',profile:'โปรไฟล์',users:'จัดการผู้ใช้',audit:'Audit Log',form:'แบบฟอร์มสอบสวนโรค',view:'ดูรายงาน'};
+  $$('#bottomTabs a[data-r]').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-r')===route); });
+  const titles = {dashboard:'Dashboard',new:'สร้างรายงานใหม่',list:'รายงานทั้งหมด',map:'🗺️ แผนที่การเกิดโรค',team:'ทีมสอบสวนโรค',settings:'ตั้งค่า',profile:'โปรไฟล์',users:'จัดการผู้ใช้',audit:'Audit Log',form:'แบบฟอร์มสอบสวนโรค',view:'ดูรายงาน'};
   $('#pageTitle').textContent = titles[route] || route;
   const c = $('#content');
   c.scrollTop = 0; window.scrollTo(0,0);
@@ -452,6 +1033,7 @@ function navigate(route, param) {
     if (route === 'dashboard') return renderDashboard(c);
     if (route === 'new') return renderDiseasePicker(c);
     if (route === 'list') return renderList(c);
+    if (route === 'map') return renderMap(c);
     if (route === 'team') return renderTeam(c);
     if (route === 'settings') return renderSettings(c);
     if (route === 'profile') return renderProfile(c);
@@ -481,8 +1063,8 @@ function renderDashboard(c) {
 
     const diseases = Object.keys(stats.byDisease).map(function(k){
       const d = DISEASES[k] || {name:k, color:'#888', icon:''};
-      return '<div class="flex" style="margin-bottom:6px"><div style="width:10px;height:10px;background:'+d.color+';border-radius:2px"></div><div style="flex:1; font-size:13px">'+d.icon+' '+escHtml(d.name)+'</div><div class="font-semibold">'+stats.byDisease[k]+'</div></div>';
-    }).join('') || '<div class="text-slate text-sm">ยังไม่มีข้อมูล</div>';
+      return '<div class="legend-row"><div class="legend-dot" style="background:'+d.color+'"></div><div class="name">'+d.icon+' '+escHtml(d.name)+'</div><div class="value">'+stats.byDisease[k]+'</div></div>';
+    }).join('');
 
     const recent = reports.slice(0,8).map(function(r){
       const d = DISEASES[r.disease]||{name:r.disease,icon:''};
@@ -491,32 +1073,221 @@ function renderDashboard(c) {
 
     c.innerHTML =
       '<div class="stats">'+
-        '<div class="stat"><div class="lbl">รายงานทั้งหมด</div><div class="num">'+stats.total+'</div></div>'+
-        '<div class="stat"><div class="lbl">7 วันล่าสุด</div><div class="num" style="color:#dc2626">'+stats.last7+'</div></div>'+
-        '<div class="stat"><div class="lbl">เดือนนี้</div><div class="num" style="color:#f59e0b">'+stats.thisMonth+'</div></div>'+
-        '<div class="stat"><div class="lbl">โรคที่พบ</div><div class="num" style="color:#16a34a">'+distinct+'</div></div>'+
+        '<div class="stat"><div class="lbl">รายงานทั้งหมด</div><div class="num">'+stats.total+'</div><div class="extra">นับสะสมทุกโรค</div></div>'+
+        '<div class="stat danger"><div class="lbl">7 วันล่าสุด</div><div class="num">'+stats.last7+'</div><div class="extra">ลงทะเบียนใหม่</div></div>'+
+        '<div class="stat warning"><div class="lbl">เดือนนี้</div><div class="num">'+stats.thisMonth+'</div><div class="extra">'+new Date().toLocaleDateString('th-TH',{month:'long',year:'numeric'})+'</div></div>'+
+        '<div class="stat success"><div class="lbl">โรคที่พบ</div><div class="num">'+distinct+'</div><div class="extra">จาก 11 โรคในระบบ</div></div>'+
       '</div>'+
       '<div class="row">'+
-        '<div class="card"><div class="section-title">แยกตามโรค</div>'+diseases+'</div>'+
+        '<div class="card"><div class="section-title">แยกตามโรค</div>'+(diseases||'<div class="text-soft text-sm">ยังไม่มีข้อมูล</div>')+'</div>'+
         '<div class="card"><div class="section-title">แนวโน้มรายเดือน (6 เดือน)</div><div class="bar-chart">'+bars+'</div></div>'+
       '</div>'+
       '<div class="card">'+
-        '<div class="flex" style="justify-content:space-between"><div class="section-title" style="border:none; margin:0">รายงานล่าสุด</div><button class="btn btn-primary btn-sm" onclick="navigate(\'new\')">+ สร้างใหม่</button></div>'+
-        (reports.length===0 ? '<div class="text-center text-slate" style="padding:30px">ยังไม่มีรายงาน</div>' :
-          '<div style="overflow-x:auto"><table><thead><tr><th>วันที่</th><th>โรค</th><th>ผู้ป่วย</th><th>ที่อยู่</th><th>สถานะ</th><th></th></tr></thead><tbody>'+recent+'</tbody></table></div>')+
+        '<div class="flex-between mb-3"><div class="section-title" style="border:none; margin:0; padding:0">รายงานล่าสุด</div><button class="btn btn-primary btn-sm" onclick="navigate(\'new\')">+ สร้างใหม่</button></div>'+
+        (reports.length===0 ? '<div class="empty"><div class="icon-big">📭</div><div class="text-base">ยังไม่มีรายงาน</div><div class="text-sm text-muted mt-1">เริ่มต้นด้วยการสร้างรายงานแรกของคุณ</div><button class="btn btn-primary mt-3" onclick="navigate(\'new\')">+ สร้างรายงานใหม่</button></div>' :
+          '<div class="table-wrap"><table><thead><tr><th>วันที่</th><th>โรค</th><th>ผู้ป่วย</th><th>ที่อยู่</th><th>สถานะ</th><th></th></tr></thead><tbody>'+recent+'</tbody></table></div>')+
       '</div>';
   }).catch(function(e){
     c.innerHTML = '<div class="bg-red-soft">โหลดข้อมูลไม่สำเร็จ: '+escHtml(e.message)+'<br><button class="btn btn-secondary btn-sm mt-2" onclick="navigate(\'dashboard\')">ลองใหม่</button></div>';
   });
 }
 
+/* ===== Map utilities ===== */
+function makeMarkerIcon(color, label, isContact) {
+  // Patient = pin shape (drop), Contact = circle
+  if (isContact) {
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:22px; height:22px; border-radius:50%; background:'+color+'; border:2.5px solid white; box-shadow:0 2px 5px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:white; font-size:11px; font-weight:700">'+(label||'')+'</div>',
+      iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -11]
+    });
+  }
+  return L.divIcon({
+    className: '',
+    html: '<div style="position:relative"><div style="width:32px; height:32px; border-radius:50% 50% 50% 0; background:'+color+'; transform:rotate(-45deg); border:3px solid white; box-shadow:0 3px 8px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; position:absolute; top:0; left:0"><span style="transform:rotate(45deg); color:white; font-size:14px; font-weight:700">'+(label||'')+'</span></div></div>',
+    iconSize: [32, 38], iconAnchor: [16, 38], popupAnchor: [0, -36]
+  });
+}
+
+function pickLocation(callback, currentLat, currentLng) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:500; display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px)';
+  overlay.innerHTML = '<div style="background:white; border-radius:14px; max-width:760px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.3)"><div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center"><div class="font-semibold">📍 เลือกตำแหน่งบนแผนที่</div><button class="btn-icon btn-ghost" onclick="this.closest(\'.pick-loc\').remove()">✕</button></div><div style="padding:16px"><div class="text-sm text-muted mb-2">คลิกที่แผนที่เพื่อปักหมุดตำแหน่ง · ลาก marker ปรับได้ · หรือใช้ <button class="btn btn-secondary btn-sm" onclick="usePickGPS()">📡 GPS ปัจจุบัน</button></div><div id="pickMap" style="height:400px; border-radius:8px; overflow:hidden; border:1px solid var(--border)"></div><div class="flex mt-3"><div class="field" style="flex:1"><label>ละติจูด (lat)</label><input type="text" id="pickLat" value="'+(currentLat||'')+'" inputmode="decimal"></div><div class="field" style="flex:1"><label>ลองจิจูด (lng)</label><input type="text" id="pickLng" value="'+(currentLng||'')+'" inputmode="decimal"></div></div></div><div style="padding:14px 20px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; background:var(--bg-soft); border-radius:0 0 14px 14px"><button class="btn btn-secondary btn-sm" onclick="this.closest(\'.pick-loc\').remove()">ยกเลิก</button><button class="btn btn-primary btn-sm" onclick="confirmPickLoc()">ใช้ตำแหน่งนี้</button></div></div>';
+  overlay.className = 'pick-loc';
+  document.body.appendChild(overlay);
+
+  const startLat = parseFloat(currentLat) || MAP_CENTER[0];
+  const startLng = parseFloat(currentLng) || MAP_CENTER[1];
+  const map = L.map('pickMap').setView([startLat, startLng], currentLat ? 16 : MAP_ZOOM);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map);
+  let marker = L.marker([startLat, startLng], { draggable: true, icon: makeMarkerIcon('#dc2626', '📍') }).addTo(map);
+
+  function setLatLng(ll) {
+    document.getElementById('pickLat').value = ll.lat.toFixed(6);
+    document.getElementById('pickLng').value = ll.lng.toFixed(6);
+  }
+  if (currentLat && currentLng) setLatLng({lat:startLat, lng:startLng});
+
+  marker.on('dragend', function(e){ setLatLng(e.target.getLatLng()); });
+  map.on('click', function(e){ marker.setLatLng(e.latlng); setLatLng(e.latlng); });
+
+  window.usePickGPS = function() {
+    if (!navigator.geolocation) return toast('เบราว์เซอร์ไม่รองรับ GPS','error');
+    toast('กำลังหาตำแหน่ง...','info');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      map.setView([ll.lat, ll.lng], 17);
+      marker.setLatLng([ll.lat, ll.lng]);
+      setLatLng(ll);
+      toast('ใช้ตำแหน่งปัจจุบัน','success');
+    }, function(err){
+      toast('GPS ผิดพลาด: ' + err.message, 'error');
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  };
+  window.confirmPickLoc = function() {
+    const lat = document.getElementById('pickLat').value;
+    const lng = document.getElementById('pickLng').value;
+    if (!lat || !lng) return toast('ยังไม่ได้เลือกตำแหน่ง','error');
+    callback(lat, lng);
+    overlay.remove();
+  };
+
+  setTimeout(function(){ map.invalidateSize(); }, 100);
+}
+
+/* ===== Map view (all reports) ===== */
+function renderMap(c) {
+  c.innerHTML =
+    '<div class="card mb-3" style="background:linear-gradient(135deg,var(--primary-50),white); border-color:var(--primary-light)">'+
+      '<div style="display:flex; align-items:center; gap:14px"><div style="font-size:32px">🗺️</div><div><div class="font-semibold" style="font-size:15px">แผนที่การเกิดโรคในพื้นที่</div><div class="text-sm text-muted">ตำบลคำใหญ่ อำเภอห้วยเม็ก จังหวัดกาฬสินธุ์ · 12 หมู่บ้าน</div></div></div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="flex mb-3">'+
+        '<select id="mapDisease" style="max-width:220px"><option value="">ทุกโรค</option>'+Object.keys(DISEASES).map(function(k){return '<option value="'+k+'">'+escHtml(DISEASES[k].name)+'</option>';}).join('')+'</select>'+
+        '<select id="mapVillage" style="max-width:200px"><option value="">ทุกหมู่บ้าน</option>'+Object.keys(VILLAGES).map(function(k){return '<option value="'+k+'">'+escHtml(VILLAGES[k])+'</option>';}).join('')+'</select>'+
+        '<label style="display:flex; align-items:center; gap:6px; font-size:13.5px; margin:0; cursor:pointer"><input type="checkbox" id="mapShowContacts" checked> แสดงผู้สัมผัส</label>'+
+        '<button class="btn btn-secondary btn-sm" onclick="renderMap(document.getElementById(\'content\'))">🔄 รีเฟรช</button>'+
+        '<span id="mapCount" class="text-sm text-muted" style="margin-left:auto"></span>'+
+      '</div>'+
+      '<div class="row" style="grid-template-columns: 3fr 1fr">'+
+        '<div id="mainMap" class="map-container full"></div>'+
+        '<div>'+
+          '<div class="legend-card mb-3">'+
+            '<div class="font-semibold mb-2">สัญลักษณ์</div>'+
+            '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px"><span style="display:inline-block; width:20px; height:24px; background:#dc2626; border-radius:50% 50% 50% 0; transform:rotate(-45deg); border:2px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.3); flex-shrink:0; margin-left:6px"></span> ผู้ป่วย (Index case)</div>'+
+            '<div style="display:flex; align-items:center; gap:8px"><span style="display:inline-block; width:16px; height:16px; background:#f59e0b; border-radius:50%; border:2px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.3); flex-shrink:0"></span> ผู้สัมผัส (Contact)</div>'+
+            '<div class="divider"></div>'+
+            '<div class="text-xs text-muted">สีของหมุดผู้ป่วยเปลี่ยนตามโรคที่เลือก</div>'+
+          '</div>'+
+          '<div class="legend-card">'+
+            '<div class="font-semibold mb-2">สถิติพื้นที่</div>'+
+            '<div id="mapStats" class="text-sm"></div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  const promise = Cache.reports ? Promise.resolve(Cache.reports) : api('getReports', Session.token);
+  promise.then(function(reports){
+    Cache.reports = reports;
+    initMainMap(reports);
+  }).catch(function(e){ c.innerHTML = '<div class="bg-red-soft">'+escHtml(e.message)+'</div>'; });
+}
+
+let _mainMap, _mainLayer;
+function initMainMap(allReports) {
+  if (_mainMap) { _mainMap.remove(); _mainMap = null; }
+  _mainMap = L.map('mainMap').setView(MAP_CENTER, MAP_ZOOM);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(_mainMap);
+  _mainLayer = L.layerGroup().addTo(_mainMap);
+
+  function update() {
+    _mainLayer.clearLayers();
+    const fd = document.getElementById('mapDisease').value;
+    const fv = document.getElementById('mapVillage').value;
+    const showContacts = document.getElementById('mapShowContacts').checked;
+    const reports = allReports.filter(function(r){
+      if (fd && r.disease !== fd) return false;
+      if (fv && String(r.moo||'') !== fv) return false;
+      return true;
+    });
+
+    let count = 0, contactCount = 0;
+    const villageStats = {};
+    const bounds = [];
+
+    reports.forEach(function(r){
+      const dis = DISEASES[r.disease] || {color:'#888', icon:'•', name:r.disease};
+      const lat = parseFloat(r.lat), lng = parseFloat(r.lng);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        const m = L.marker([lat, lng], { icon: makeMarkerIcon(dis.color, dis.icon, false) }).addTo(_mainLayer);
+        const popup =
+          '<div style="min-width:220px">'+
+            '<div style="font-weight:700; color:'+dis.color+'; margin-bottom:4px">'+dis.icon+' '+escHtml(dis.name)+'</div>'+
+            '<div style="font-size:13px"><b>ผู้ป่วย:</b> '+escHtml(r.patientName||'-')+'</div>'+
+            (r.moo ? '<div style="font-size:12.5px"><b>หมู่บ้าน:</b> '+escHtml(VILLAGES[r.moo]||('หมู่ '+r.moo))+'</div>' : '')+
+            '<div style="font-size:12.5px"><b>วันที่เริ่มป่วย:</b> '+fmtDate(r.onsetDate)+'</div>'+
+            '<div style="font-size:12.5px"><b>สถานะ:</b> '+(r.status==='submitted'?'ส่งแล้ว':r.status==='completed'?'เสร็จสมบูรณ์':'ร่าง')+'</div>'+
+            '<div style="margin-top:8px"><a href="#" onclick="navigate(\'view\',\''+r.id+'\');return false" style="font-size:13px">→ ดูรายงานเต็ม</a></div>'+
+          '</div>';
+        m.bindPopup(popup);
+        bounds.push([lat, lng]);
+        count++;
+      }
+      // Contacts
+      if (showContacts && r.contacts) {
+        r.contacts.forEach(function(ct, i){
+          const cLat = parseFloat(ct.lat), cLng = parseFloat(ct.lng);
+          if (!isNaN(cLat) && !isNaN(cLng)) {
+            const cm = L.marker([cLat, cLng], { icon: makeMarkerIcon('#f59e0b', String(i+1), true) }).addTo(_mainLayer);
+            cm.bindPopup('<div style="min-width:200px"><div style="font-weight:600; color:#b45309">👥 ผู้สัมผัสของ '+escHtml(r.patientName||'-')+'</div><div style="font-size:13px"><b>ชื่อ:</b> '+escHtml(ct.name||'-')+'</div><div style="font-size:12.5px"><b>อายุ:</b> '+escHtml(ct.age||'-')+' '+escHtml(ct.sex||'')+'</div><div style="font-size:12.5px"><b>ความสัมพันธ์:</b> '+escHtml(ct.relation||'-')+'</div><div style="font-size:12.5px"><b>อาการ:</b> '+escHtml(ct.symptoms||'-')+'</div></div>');
+            bounds.push([cLat, cLng]);
+            contactCount++;
+          }
+        });
+      }
+      // Village stats
+      if (r.moo) villageStats[r.moo] = (villageStats[r.moo] || 0) + 1;
+    });
+
+    document.getElementById('mapCount').textContent = '📍 '+count+' ผู้ป่วย · '+contactCount+' ผู้สัมผัส';
+    const sortedVillages = Object.keys(villageStats).sort(function(a,b){return villageStats[b]-villageStats[a];});
+    document.getElementById('mapStats').innerHTML = sortedVillages.length === 0 ? '<div class="text-muted">ไม่มีข้อมูล</div>' :
+      sortedVillages.map(function(v){
+        return '<div class="legend-row"><div class="legend-dot" style="background:#0d6e6e"></div><div class="name" style="font-size:12.5px">'+escHtml(VILLAGES[v]||('หมู่ '+v))+'</div><div class="value">'+villageStats[v]+'</div></div>';
+      }).join('');
+
+    if (bounds.length > 0) {
+      try { _mainMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 }); } catch(e){}
+    }
+  }
+  document.getElementById('mapDisease').onchange = update;
+  document.getElementById('mapVillage').onchange = update;
+  document.getElementById('mapShowContacts').onchange = update;
+  update();
+  setTimeout(function(){ _mainMap.invalidateSize(); }, 200);
+}
+
 /* ===== Disease picker ===== */
 function renderDiseasePicker(c) {
   const items = Object.keys(DISEASES).map(function(k){
     const d = DISEASES[k];
-    return '<button onclick="navigate(\'form\',{disease:\''+k+'\'})"><div class="icon" style="color:'+d.color+'">'+d.icon+'</div><div class="nm">'+escHtml(d.name)+'</div><div class="en">'+escHtml(d.nameEn)+'</div><div class="text-xs text-slate mt-2">รหัส: '+d.code+'</div></button>';
+    return '<button style="--disease-color:'+d.color+'" onclick="navigate(\'form\',{disease:\''+k+'\'})">'+
+      '<div class="icon" style="background:'+d.color+'15; color:'+d.color+'">'+d.icon+'</div>'+
+      '<div class="nm">'+escHtml(d.name)+'</div>'+
+      '<div class="en">'+escHtml(d.nameEn)+'</div>'+
+      '<div class="code">รหัส · '+d.code+'</div>'+
+    '</button>';
   }).join('');
-  c.innerHTML = '<div class="text-slate mb-3">เลือกโรคที่ต้องการสร้างรายงาน — แบบฟอร์มอ้างอิงกองระบาดวิทยา กรมควบคุมโรค</div><div class="disease-grid">'+items+'</div>';
+  c.innerHTML =
+    '<div class="card mb-3" style="background:linear-gradient(135deg, var(--primary-50), white); border-color:var(--primary-light)">'+
+      '<div style="display:flex; align-items:center; gap:14px">'+
+        '<div style="font-size:32px">📋</div>'+
+        '<div><div class="font-semibold" style="font-size:15px">เลือกโรคที่ต้องการสร้างรายงาน</div>'+
+        '<div class="text-sm text-muted">แบบฟอร์มอ้างอิง · กองระบาดวิทยา กรมควบคุมโรค กระทรวงสาธารณสุข</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="disease-grid">'+items+'</div>';
 }
 
 /* ===== Report list ===== */
@@ -576,7 +1347,7 @@ function renderTeam(c) {
     let work = team.slice();
     function rd() {
       $('#tList').innerHTML = work.map(function(m,i){
-        return '<div class="card" style="background:#f8fafc; padding:10px"><div class="row-3"><div class="field"><label>ชื่อ-สกุล</label><input data-i="'+i+'" data-k="name" value="'+escHtml(m.name||'')+'"></div><div class="field"><label>ตำแหน่ง</label><input data-i="'+i+'" data-k="position" value="'+escHtml(m.position||'')+'"></div><div class="field"><label>โทรศัพท์</label><input data-i="'+i+'" data-k="phone" value="'+escHtml(m.phone||'')+'"></div></div><div class="text-right"><button class="btn btn-danger btn-sm" onclick="rmTeam('+i+')">ลบ</button></div></div>';
+        return '<div class="card" style="background:#f8fafc; padding:10px"><div class="row-3"><div class="field"><label>ชื่อ-สกุล</label><input type="text" data-i="'+i+'" data-k="name" value="'+escHtml(m.name||'')+'"></div><div class="field"><label>ตำแหน่ง</label><input type="text" data-i="'+i+'" data-k="position" value="'+escHtml(m.position||'')+'"></div><div class="field"><label>โทรศัพท์</label><input type="text" inputmode="tel" data-i="'+i+'" data-k="phone" value="'+escHtml(m.phone||'')+'"></div></div><div class="text-right"><button class="btn btn-danger btn-sm" onclick="rmTeam('+i+')">ลบ</button></div></div>';
       }).join('');
     }
     c.innerHTML = '<div class="card"><div class="section-title">ทีมสอบสวนโรค (สำหรับลงนามในรายงาน)</div><div class="text-sm text-slate mb-3">ข้อมูลถูกบันทึกใน Google Sheet — แชร์กับเจ้าหน้าที่ทุกคน</div><div id="tList"></div><div class="mt-3"><button class="btn btn-secondary btn-sm" onclick="addTeam()">+ เพิ่มสมาชิก</button> <button class="btn btn-primary btn-sm" onclick="saveTeam()">💾 บันทึก</button></div></div>';
@@ -597,19 +1368,34 @@ function renderTeam(c) {
 
 /* ===== Settings ===== */
 function renderSettings(c) {
-  api('getSettings', Session.token).then(function(s){
+  const isAdmin = (Session.user||{}).role === 'admin';
+  Promise.all([api('getSettings', Session.token), isAdmin ? api('getApiKeyStatus', Session.token) : Promise.resolve({ok:true,configured:false})]).then(function(rs){
+    const s = rs[0], keyStatus = rs[1];
     c.innerHTML =
       '<div class="card"><div class="section-title">ข้อมูลหน่วยงาน</div>'+
-        '<div class="field"><label>ชื่อหน่วยงาน</label><input id="sH" value="'+escHtml(s.hospital||'')+'"></div>'+
-        '<div class="field"><label>รหัสหน่วยบริการ</label><input id="sHC" value="'+escHtml(s.hospitalCode||'')+'"></div>'+
-        '<div class="row"><div class="field"><label>อำเภอ</label><input id="sD" value="'+escHtml(s.district||'')+'"></div><div class="field"><label>จังหวัด</label><input id="sP" value="'+escHtml(s.province||'')+'"></div></div>'+
-        '<div class="field"><label>ส่งรายงานไปยัง</label><input id="sST" value="'+escHtml(s.sentTo||'')+'"></div>'+
+        '<div class="field"><label>ชื่อหน่วยงาน</label><input type="text" id="sH" value="'+escHtml(s.hospital||'')+'"></div>'+
+        '<div class="field"><label>รหัสหน่วยบริการ</label><input type="text" id="sHC" value="'+escHtml(s.hospitalCode||'')+'"></div>'+
+        '<div class="row"><div class="field"><label>อำเภอ</label><input type="text" id="sD" value="'+escHtml(s.district||'')+'"></div><div class="field"><label>จังหวัด</label><input type="text" id="sP" value="'+escHtml(s.province||'')+'"></div></div>'+
+        '<div class="field"><label>ส่งรายงานไปยัง</label><input type="text" id="sST" value="'+escHtml(s.sentTo||'')+'"></div>'+
         '<button class="btn btn-primary btn-sm mt-2" onclick="saveSt()">💾 บันทึก</button>'+
       '</div>'+
-      '<div class="card"><div class="section-title">ข้อมูลระบบ</div><div class="text-sm text-slate">'+
-        '<div>📊 Google Sheet: <code>19tpzwH02v...ZI3M</code></div>'+
-        '<div>🖼️ Drive Folder: <code>1M17ITiQ-G...EsVU</code></div>'+
-        '<div>🔐 Login ปลอดภัย — Session 8 ชม.</div>'+
+      (isAdmin ? (
+        '<div class="card"><div class="section-title">🤖 AI สำหรับสร้างรายงานเชิงพรรณนา</div>'+
+        '<div class="text-sm text-muted mb-3">ใช้ Google Gemini API สร้างรายงานสอบสวนเชิงพรรณนาฉบับสมบูรณ์ตามมาตรฐานกองระบาดวิทยา</div>'+
+        '<div style="background:'+(keyStatus.configured?'#d1fae5':'#fef3c7')+'; padding:10px 14px; border-radius:8px; font-size:13.5px; margin-bottom:12px">'+
+          (keyStatus.configured ? '✅ ตั้งค่า API Key แล้ว — พร้อมใช้งาน' : '⚠️ ยังไม่ได้ตั้ง API Key — ฟีเจอร์ AI ปิดอยู่')+
+        '</div>'+
+        '<div class="field"><label>Gemini API Key</label><input type="password" id="apiKey" placeholder="AIzaSy..." autocomplete="off"></div>'+
+        '<div class="text-xs text-muted mb-2">รับ API key ฟรีที่ <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> — ฟรี 60 requests/min</div>'+
+        '<div class="flex"><button class="btn btn-primary btn-sm" onclick="saveKey()">💾 บันทึก API Key</button>'+
+        (keyStatus.configured ? '<button class="btn btn-danger btn-sm" onclick="if(confirm(\'ลบ API Key?\'))clearKey()">🗑️ ลบ Key</button>' : '')+'</div>'+
+        '</div>'
+      ) : '')+
+      '<div class="card"><div class="section-title">ข้อมูลระบบ</div><div class="text-sm text-muted">'+
+        '<div>📊 Google Sheet: <code class="font-mono">19tpzwH02v...ZI3M</code></div>'+
+        '<div>🖼️ Drive Folder: <code class="font-mono">1M17ITiQ-G...EsVU</code></div>'+
+        '<div>🔐 Login ปลอดภัย — Session 8 ชม. + Lockout</div>'+
+        '<div>🤖 AI: Google Gemini 2.0 Flash</div>'+
       '</div></div>';
     window.saveSt = function(){
       const ns = {hospital:$('#sH').value, hospitalCode:$('#sHC').value, district:$('#sD').value, province:$('#sP').value, sentTo:$('#sST').value};
@@ -619,6 +1405,24 @@ function renderSettings(c) {
         if (r.ok) { toast('บันทึกแล้ว','success'); $('#hSentTo').textContent=ns.sentTo||'สสอ.ห้วยเม็ก'; }
         else toast(r.error,'error');
       }).catch(function(e){ showLoading(false); toast(e.message,'error'); });
+    };
+    window.saveKey = function(){
+      const k = $('#apiKey').value.trim();
+      if (!k || k.length < 20) return toast('API Key ไม่ถูกต้อง','error');
+      showLoading(true);
+      api('setGeminiApiKey', Session.token, k).then(function(r){
+        showLoading(false);
+        if (r.ok) { toast('บันทึก API Key แล้ว','success'); navigate('settings'); }
+        else toast(r.error,'error');
+      }).catch(function(e){ showLoading(false); toast(e.message,'error'); });
+    };
+    window.clearKey = function(){
+      showLoading(true);
+      api('setGeminiApiKey', Session.token, '').then(function(r){
+        showLoading(false);
+        if (r.ok) { toast('ลบ API Key แล้ว','success'); navigate('settings'); }
+        else toast(r.error,'error');
+      });
     };
   }).catch(function(e){ c.innerHTML='<div class="bg-red-soft">'+escHtml(e.message)+'</div>'; });
 }
@@ -668,7 +1472,7 @@ function renderUsers(c) {
         '<div class="card"><div class="section-title">เพิ่มผู้ใช้ใหม่</div><form id="nuF">'+
           '<div class="row"><div class="field"><label>Username</label><input id="nU" required></div><div class="field"><label>รหัสผ่านชั่วคราว</label><input type="password" id="nP" required minlength="8"></div></div>'+
           '<div class="row"><div class="field"><label>ชื่อ-สกุล</label><input id="nF"></div><div class="field"><label>ตำแหน่ง</label><input id="nPo"></div></div>'+
-          '<div class="row"><div class="field"><label>โทรศัพท์</label><input id="nPh"></div><div class="field"><label>อีเมล</label><input id="nE"></div></div>'+
+          '<div class="row"><div class="field"><label>โทรศัพท์</label><input type="text" inputmode="tel" id="nPh"></div><div class="field"><label>อีเมล</label><input type="email" id="nE"></div></div>'+
           '<div class="field"><label>บทบาท</label><select id="nR"><option value="investigator">เจ้าหน้าที่</option><option value="admin">ผู้ดูแล (admin)</option></select></div>'+
           '<button class="btn btn-primary btn-sm">บันทึก</button> <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById(\'uForm\').innerHTML=\'\'">ยกเลิก</button>'+
         '</form></div>';
@@ -688,7 +1492,7 @@ function renderUsers(c) {
       $('#uForm').innerHTML =
         '<div class="card"><div class="section-title">แก้ไข: '+escHtml(un)+'</div><form id="euF">'+
           '<div class="row"><div class="field"><label>ชื่อ-สกุล</label><input id="eF" value="'+escHtml(u.fullName||'')+'"></div><div class="field"><label>ตำแหน่ง</label><input id="ePo" value="'+escHtml(u.position||'')+'"></div></div>'+
-          '<div class="row"><div class="field"><label>โทรศัพท์</label><input id="ePh" value="'+escHtml(u.phone||'')+'"></div><div class="field"><label>อีเมล</label><input id="eE" value="'+escHtml(u.email||'')+'"></div></div>'+
+          '<div class="row"><div class="field"><label>โทรศัพท์</label><input type="text" inputmode="tel" id="ePh" value="'+escHtml(u.phone||'')+'"></div><div class="field"><label>อีเมล</label><input type="email" id="eE" value="'+escHtml(u.email||'')+'"></div></div>'+
           '<div class="row"><div class="field"><label>บทบาท</label><select id="eR"><option value="investigator" '+(u.role==='investigator'?'selected':'')+'>เจ้าหน้าที่</option><option value="admin" '+(u.role==='admin'?'selected':'')+'>ผู้ดูแล</option></select></div><div class="field"><label>สถานะ</label><select id="eA"><option value="true" '+(u.active!==false&&u.active!=='FALSE'?'selected':'')+'>ใช้งาน</option><option value="false" '+(u.active===false||u.active==='FALSE'?'selected':'')+'>ปิด</option></select></div></div>'+
           '<div class="field"><label>รหัสใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</label><input type="password" id="eP" minlength="8"></div>'+
           '<button class="btn btn-primary btn-sm">บันทึก</button> <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById(\'uForm\').innerHTML=\'\'">ยกเลิก</button>'+
@@ -759,10 +1563,12 @@ function buildForm(c, r) {
 
   function contactTbl() {
     const list = r.contacts||[];
-    let h = '<table class="compact"><thead><tr><th style="width:40px">#</th><th>ชื่อ-สกุล</th><th style="width:60px">อายุ</th><th style="width:70px">เพศ</th><th>อาการ</th><th>วันเริ่มป่วย</th><th>ที่อยู่</th><th>ความสัมพันธ์</th></tr></thead><tbody>';
+    let h = '<table class="compact"><thead><tr><th style="width:30px">#</th><th>ชื่อ-สกุล</th><th style="width:55px">อายุ</th><th style="width:55px">เพศ</th><th>อาการ</th><th style="width:120px">เริ่มป่วย</th><th>ที่อยู่</th><th>ความสัมพันธ์</th><th style="width:200px">📍 พิกัด GPS</th></tr></thead><tbody>';
     for (let i=0;i<Math.max(6,list.length);i++) {
       const x=list[i]||{};
-      h += '<tr data-c="'+i+'"><td>'+(i+1)+'</td><td><input data-k="name" value="'+escHtml(x.name||'')+'"></td><td><input data-k="age" value="'+escHtml(x.age||'')+'"></td><td><input data-k="sex" value="'+escHtml(x.sex||'')+'"></td><td><input data-k="symptoms" value="'+escHtml(x.symptoms||'')+'"></td><td><input type="date" data-k="onsetDate" value="'+escHtml(x.onsetDate||'')+'"></td><td><input data-k="address" value="'+escHtml(x.address||'')+'"></td><td><input data-k="relation" value="'+escHtml(x.relation||'')+'"></td></tr>';
+      const hasGps = x.lat && x.lng;
+      h += '<tr data-c="'+i+'"><td>'+(i+1)+'</td><td><input type="text" data-k="name" value="'+escHtml(x.name||'')+'"></td><td><input type="text" data-k="age" value="'+escHtml(x.age||'')+'"></td><td><input type="text" data-k="sex" value="'+escHtml(x.sex||'')+'"></td><td><input type="text" data-k="symptoms" value="'+escHtml(x.symptoms||'')+'"></td><td><input type="date" data-k="onsetDate" value="'+escHtml(x.onsetDate||'')+'"></td><td><input type="text" data-k="address" value="'+escHtml(x.address||'')+'"></td><td><input type="text" data-k="relation" value="'+escHtml(x.relation||'')+'"></td>'+
+        '<td style="white-space:nowrap"><div style="display:flex; gap:2px; align-items:center"><input type="text" data-k="lat" value="'+escHtml(x.lat||'')+'" placeholder="lat" style="width:65px; font-size:11px"><input type="text" data-k="lng" value="'+escHtml(x.lng||'')+'" placeholder="lng" style="width:65px; font-size:11px"><button type="button" class="btn-icon btn-ghost" style="width:24px; height:24px; padding:0; font-size:13px" onclick="useContactGPS('+i+')" title="ใช้ GPS">📡</button><button type="button" class="btn-icon btn-ghost" style="width:24px; height:24px; padding:0; font-size:13px" onclick="pickContactLoc('+i+')" title="เลือกบนแผนที่">🗺️</button></div></td></tr>';
     }
     h += '</tbody></table>';
     return h;
@@ -780,10 +1586,20 @@ function buildForm(c, r) {
       '<div class="row-4"><div class="field"><label>เลขบัตร ปชช.</label><input id="idCard" maxlength="13" value="'+escHtml(r.idCard||'')+'"></div><div class="field"><label>HN</label><input id="hn" value="'+escHtml(r.hn||'')+'"></div><div class="field"><label>AN</label><input id="an" value="'+escHtml(r.an||'')+'"></div><div class="field"><label>เพศ</label><select id="sex"><option></option><option '+(r.sex==='ชาย'?'selected':'')+'>ชาย</option><option '+(r.sex==='หญิง'?'selected':'')+'>หญิง</option></select></div></div>'+
       '<div class="row-4"><div class="field"><label>วันเกิด</label><input type="date" id="birthDate" value="'+escHtml(r.birthDate||'')+'"></div><div class="field"><label>อายุ (ปี)</label><input id="ageY" value="'+escHtml(r.ageY||'')+'"></div><div class="field"><label>อายุ (เดือน)</label><input id="ageM" value="'+escHtml(r.ageM||'')+'"></div><div class="field"><label>สัญชาติ</label><input id="nationality" value="'+escHtml(r.nationality||'ไทย')+'"></div></div>'+
       '<div class="row-3"><div class="field"><label>ศาสนา</label><input id="religion" value="'+escHtml(r.religion||'')+'"></div><div class="field"><label>อาชีพ</label><input id="occupation" value="'+escHtml(r.occupation||'')+'"></div><div class="field"><label>ที่ทำงาน/โรงเรียน</label><input id="workplace" value="'+escHtml(r.workplace||'')+'"></div></div>'+
-      '<div class="row-4"><div class="field"><label>ชั้นเรียน</label><input id="grade" value="'+escHtml(r.grade||'')+'"></div><div class="field"><label>โทรศัพท์</label><input id="phone" value="'+escHtml(r.phone||'')+'"></div><div class="field"><label>ผู้ปกครอง (อายุ&lt;15)</label><input id="guardian" value="'+escHtml(r.guardian||'')+'"></div><div class="field"><label>เกี่ยวข้องเป็น</label><input id="guardianRelation" value="'+escHtml(r.guardianRelation||'')+'"></div></div>'+
+      '<div class="row-4"><div class="field"><label>ชั้นเรียน</label><input type="text" id="grade" value="'+escHtml(r.grade||'')+'"></div><div class="field"><label>โทรศัพท์</label><input type="text" inputmode="tel" id="phone" value="'+escHtml(r.phone||'')+'"></div><div class="field"><label>ผู้ปกครอง (อายุ&lt;15)</label><input type="text" id="guardian" value="'+escHtml(r.guardian||'')+'"></div><div class="field"><label>เกี่ยวข้องเป็น</label><input type="text" id="guardianRelation" value="'+escHtml(r.guardianRelation||'')+'"></div></div>'+
       '<div class="font-semibold mt-3 mb-2 text-sm">ที่อยู่ขณะป่วย</div>'+
-      '<div class="row-4"><div class="field"><label>บ้านเลขที่</label><input id="houseNo" value="'+escHtml(r.houseNo||'')+'"></div><div class="field"><label>หมู่ที่</label><input id="moo" value="'+escHtml(r.moo||'')+'"></div><div class="field"><label>หมู่บ้าน</label><input id="village" value="'+escHtml(r.village||'')+'"></div><div class="field"><label>ถนน</label><input id="street" value="'+escHtml(r.street||'')+'"></div></div>'+
-      '<div class="row-3"><div class="field"><label>ตำบล</label><input id="subdistrict" value="'+escHtml(r.subdistrict||'คำใหญ่')+'"></div><div class="field"><label>อำเภอ</label><input id="district" value="'+escHtml(r.district||'ห้วยเม็ก')+'"></div><div class="field"><label>จังหวัด</label><input id="province" value="'+escHtml(r.province||'กาฬสินธุ์')+'"></div></div>'+
+      '<div class="row-3"><div class="field"><label>บ้านเลขที่</label><input type="text" id="houseNo" value="'+escHtml(r.houseNo||'')+'"></div><div class="field"><label>หมู่ที่ (ตำบลคำใหญ่)</label><select id="moo" onchange="onMooChange()"><option value="">-- เลือกหมู่บ้าน --</option>'+Object.keys(VILLAGES).map(function(k){return '<option value="'+k+'" '+(String(r.moo)===k?'selected':'')+'>'+escHtml(VILLAGES[k])+'</option>';}).join('')+'<option value="other" '+(r.moo&&!VILLAGES[r.moo]?'selected':'')+'>หมู่อื่น (พิมพ์เอง)</option></select></div><div class="field"><label>ถนน/ซอย</label><input type="text" id="street" value="'+escHtml(r.street||'')+'"></div></div>'+
+      '<div class="row" id="customMooRow" '+(r.moo&&!VILLAGES[r.moo]?'':'style="display:none"')+'><div class="field"><label>หมู่ที่ (พิมพ์เอง)</label><input type="text" id="mooOther" value="'+(r.moo&&!VILLAGES[r.moo]?escHtml(r.moo):'')+'"></div><div class="field"><label>ชื่อหมู่บ้าน/ชุมชน</label><input type="text" id="village" value="'+escHtml(r.village||'')+'"></div></div>'+
+      '<div class="row-3"><div class="field"><label>ตำบล</label><input type="text" id="subdistrict" value="'+escHtml(r.subdistrict||'คำใหญ่')+'"></div><div class="field"><label>อำเภอ</label><input type="text" id="district" value="'+escHtml(r.district||'ห้วยเม็ก')+'"></div><div class="field"><label>จังหวัด</label><input type="text" id="province" value="'+escHtml(r.province||'กาฬสินธุ์')+'"></div></div>'+
+      '<div class="font-semibold mt-3 mb-2 text-sm">📍 พิกัด GPS ของผู้ป่วย</div>'+
+      '<div class="gps-row">'+
+        '<div class="field"><label>ละติจูด (lat)</label><input type="text" id="lat" value="'+escHtml(r.lat||'')+'" inputmode="decimal" placeholder="16.6320"></div>'+
+        '<div class="field"><label>ลองจิจูด (lng)</label><input type="text" id="lng" value="'+escHtml(r.lng||'')+'" inputmode="decimal" placeholder="103.1830"></div>'+
+        '<button type="button" class="btn btn-secondary btn-sm" onclick="useGPS()">📡 ใช้ GPS</button>'+
+        '<button type="button" class="btn btn-secondary btn-sm" onclick="pickPatientLoc()">🗺️ เลือกบนแผนที่</button>'+
+        '<button type="button" class="btn btn-secondary btn-sm" onclick="clearGPS()" '+(r.lat&&r.lng?'':'style="display:none"')+' id="clearGPSBtn">✕</button>'+
+      '</div>'+
+      '<div id="patientMapPreview" class="map-container small" '+(r.lat&&r.lng?'':'style="display:none"')+'></div>'+
     '</div>'+
 
     '<div class="card"><div class="section-title">2. อาการและอาการแสดง</div>'+
@@ -829,8 +1645,8 @@ function buildForm(c, r) {
     '</div>'+
 
     '<div class="card"><div class="section-title">9. ผู้สอบสวน</div>'+
-      '<div class="row"><div class="field"><label>ผู้ให้ข้อมูล</label><input id="informant" value="'+escHtml(r.informant||'')+'"></div><div class="field"><label>โทรศัพท์</label><input id="informantPhone" value="'+escHtml(r.informantPhone||'')+'"></div></div>'+
-      '<div class="row-3"><div class="field"><label>วันที่สอบสวน</label><input type="date" id="investigationDate" value="'+escHtml(r.investigationDate||'')+'"></div><div class="field"><label>หน่วยงาน</label><input id="agency" value="'+escHtml(r.agency||'รพ.สต.บ้านคำใหญ่')+'"></div><div class="field"><label>โทรศัพท์หน่วยงาน</label><input id="agencyPhone" value="'+escHtml(r.agencyPhone||'')+'"></div></div>'+
+      '<div class="row"><div class="field"><label>ผู้ให้ข้อมูล</label><input type="text" id="informant" value="'+escHtml(r.informant||'')+'"></div><div class="field"><label>โทรศัพท์</label><input type="text" inputmode="tel" id="informantPhone" value="'+escHtml(r.informantPhone||'')+'"></div></div>'+
+      '<div class="row-3"><div class="field"><label>วันที่สอบสวน</label><input type="date" id="investigationDate" value="'+escHtml(r.investigationDate||'')+'"></div><div class="field"><label>หน่วยงาน</label><input type="text" id="agency" value="'+escHtml(r.agency||'รพ.สต.บ้านคำใหญ่')+'"></div><div class="field"><label>โทรศัพท์หน่วยงาน</label><input type="text" inputmode="tel" id="agencyPhone" value="'+escHtml(r.agencyPhone||'')+'"></div></div>'+
       '<div class="field"><label>ผู้สอบสวนหลัก</label><input id="investigator" value="'+escHtml(r.investigator||(Session.user||{}).fullName||'')+'"></div>'+
     '</div>'+
 
@@ -846,6 +1662,82 @@ function buildForm(c, r) {
 
   // Wire up
   window._curReport = r;
+
+  // ===== GPS / Map preview =====
+  let _previewMap = null;
+  function updatePreview() {
+    const lat = parseFloat(document.getElementById('lat').value);
+    const lng = parseFloat(document.getElementById('lng').value);
+    const prev = document.getElementById('patientMapPreview');
+    const clearBtn = document.getElementById('clearGPSBtn');
+    if (isNaN(lat) || isNaN(lng)) {
+      prev.style.display = 'none';
+      clearBtn.style.display = 'none';
+      return;
+    }
+    prev.style.display = '';
+    clearBtn.style.display = '';
+    if (_previewMap) { _previewMap.remove(); _previewMap = null; }
+    _previewMap = L.map('patientMapPreview', { zoomControl: false, dragging: false, scrollWheelZoom: false }).setView([lat, lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(_previewMap);
+    L.marker([lat, lng], { icon: makeMarkerIcon('#dc2626', '📍') }).addTo(_previewMap);
+    setTimeout(function(){ if (_previewMap) _previewMap.invalidateSize(); }, 100);
+  }
+  document.getElementById('lat').addEventListener('change', updatePreview);
+  document.getElementById('lng').addEventListener('change', updatePreview);
+  setTimeout(updatePreview, 200);
+
+  window.useGPS = function() {
+    if (!navigator.geolocation) return toast('เบราว์เซอร์ไม่รองรับ GPS','error');
+    toast('กำลังหาตำแหน่ง GPS...','info');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      document.getElementById('lat').value = pos.coords.latitude.toFixed(6);
+      document.getElementById('lng').value = pos.coords.longitude.toFixed(6);
+      updatePreview();
+      toast('ใช้ตำแหน่งปัจจุบัน','success');
+    }, function(err){ toast('GPS ผิดพลาด: ' + err.message, 'error'); }, { enableHighAccuracy: true, timeout: 10000 });
+  };
+  window.pickPatientLoc = function() {
+    pickLocation(function(lat, lng){
+      document.getElementById('lat').value = lat;
+      document.getElementById('lng').value = lng;
+      updatePreview();
+    }, document.getElementById('lat').value, document.getElementById('lng').value);
+  };
+  window.clearGPS = function() {
+    document.getElementById('lat').value = '';
+    document.getElementById('lng').value = '';
+    updatePreview();
+  };
+  window.onMooChange = function() {
+    const sel = document.getElementById('moo');
+    document.getElementById('customMooRow').style.display = (sel.value === 'other') ? '' : 'none';
+    if (sel.value && VILLAGES[sel.value]) {
+      // Auto-fill village name from selection
+      const vNameInp = document.getElementById('village');
+      if (vNameInp && !vNameInp.value) vNameInp.value = VILLAGES[sel.value].replace(/^หมู่\s*\d+\s*/, '');
+    }
+  };
+  window.pickContactLoc = function(idx) {
+    const tr = document.querySelector('tr[data-c="'+idx+'"]');
+    if (!tr) return;
+    const latInp = tr.querySelector('input[data-k="lat"]');
+    const lngInp = tr.querySelector('input[data-k="lng"]');
+    pickLocation(function(lat, lng){
+      latInp.value = lat;
+      lngInp.value = lng;
+    }, latInp.value, lngInp.value);
+  };
+  window.useContactGPS = function(idx) {
+    const tr = document.querySelector('tr[data-c="'+idx+'"]');
+    if (!tr) return;
+    if (!navigator.geolocation) return toast('GPS ไม่รองรับ','error');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      tr.querySelector('input[data-k="lat"]').value = pos.coords.latitude.toFixed(6);
+      tr.querySelector('input[data-k="lng"]').value = pos.coords.longitude.toFixed(6);
+      toast('ใช้ตำแหน่งปัจจุบัน','success');
+    }, function(err){ toast('GPS: ' + err.message, 'error'); }, { enableHighAccuracy: true });
+  };
 
   $('#imgUp').addEventListener('change', function(e){
     const files = Array.from(e.target.files);
@@ -898,9 +1790,14 @@ function buildForm(c, r) {
   };
 
   window.doSave = function(silent, thenView) {
-    ['prefix','firstName','lastName','idCard','hn','an','sex','birthDate','ageY','ageM','nationality','religion','occupation','workplace','grade','phone','guardian','guardianRelation','houseNo','moo','village','street','subdistrict','district','province','onsetDate','onsetTime','vsTemp','vsPulse','vsRR','vsBP','vsWeight','otherSymptoms','treatDate','hospital','diagnosis','patientType','outcome','dischargeDate','referTo','antibiotics','situation','measures','problems','recommendations','informant','informantPhone','investigationDate','agency','agencyPhone','investigator'].forEach(function(k){
+    ['prefix','firstName','lastName','idCard','hn','an','sex','birthDate','ageY','ageM','nationality','religion','occupation','workplace','grade','phone','guardian','guardianRelation','houseNo','moo','village','street','subdistrict','district','province','lat','lng','onsetDate','onsetTime','vsTemp','vsPulse','vsRR','vsBP','vsWeight','otherSymptoms','treatDate','hospital','diagnosis','patientType','outcome','dischargeDate','referTo','antibiotics','situation','measures','problems','recommendations','informant','informantPhone','investigationDate','agency','agencyPhone','investigator'].forEach(function(k){
       const e = document.getElementById(k); if (e) r[k] = e.value;
     });
+    // ถ้าเลือก "หมู่อื่น" ใช้ค่าที่พิมพ์เอง
+    if (r.moo === 'other') {
+      const otherEl = document.getElementById('mooOther');
+      r.moo = otherEl ? otherEl.value : '';
+    }
     r.patientName = ((r.prefix||'')+(r.firstName||'')+' '+(r.lastName||'')).trim();
     r.symptoms = {};
     (dis.symptoms||[]).forEach(function(s,i){
@@ -951,6 +1848,7 @@ function buildForm(c, r) {
 
 /* ===== View ===== */
 function renderView(c, id) {
+  window._currentReportId = id;
   Promise.all([api('getReport', Session.token, id), api('getSettings', Session.token), api('getTeam', Session.token)]).then(function(rs){
     const r = rs[0], settings = rs[1], team = rs[2];
     if (!r) { toast('ไม่พบรายงาน','error'); return navigate('list'); }
@@ -970,13 +1868,17 @@ function renderView(c, id) {
       return '<tr><td>'+(i+1)+'</td><td>'+escHtml(x.name||'')+'</td><td>'+escHtml(x.age||'')+'</td><td>'+escHtml(x.sex||'')+'</td><td>'+escHtml(x.symptoms||'')+'</td><td>'+fmtDate(x.onsetDate)+'</td><td>'+escHtml(x.address||'')+'</td><td>'+escHtml(x.relation||'')+'</td></tr>';
     }).join('');
 
-    const fullAddr = [r.houseNo&&'เลขที่ '+r.houseNo, r.moo&&'หมู่ '+r.moo, r.village, r.subdistrict&&'ต.'+r.subdistrict, r.district&&'อ.'+r.district, r.province&&'จ.'+r.province].filter(Boolean).join(' ');
+    const mooLabel = r.moo ? (VILLAGES[r.moo] || ('หมู่ '+r.moo)) : '';
+    const fullAddr = [r.houseNo&&'เลขที่ '+r.houseNo, mooLabel, r.subdistrict&&'ต.'+r.subdistrict, r.district&&'อ.'+r.district, r.province&&'จ.'+r.province].filter(Boolean).join(' ');
+    const hasGps = r.lat && r.lng && !isNaN(parseFloat(r.lat)) && !isNaN(parseFloat(r.lng));
+    const contactGps = (r.contacts||[]).filter(function(c){return c.lat && c.lng && !isNaN(parseFloat(c.lat));});
     const imgs = (r.attachments||[]).map(function(a){ return '<img src="'+escHtml(a.thumbUrl||a.url)+'" class="thumb" style="margin:2px" onclick="window.open(\''+escHtml(a.url)+'\',\'_blank\')">'; }).join('');
 
     const teamHtml = (team||[]).map(function(m){ return '<div>• '+escHtml(m.name||'[ยังไม่ระบุชื่อ]')+' — '+escHtml(m.position||'-')+'</div>'; }).join('');
 
     c.innerHTML =
-      '<div class="card no-print" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px"><div><div class="text-xs text-slate">'+escHtml(dis.formTitle)+'</div><div style="font-size:18px; font-weight:700; color:'+dis.color+'">'+dis.icon+' '+escHtml(dis.name)+' — '+escHtml(r.patientName||'ผู้ป่วย')+'</div></div><div class="flex">'+badge(r.status)+'<button class="btn btn-secondary btn-sm" onclick="navigate(\'form\',{id:\''+r.id+'\'})">✏️ แก้</button><button class="btn btn-primary btn-sm" onclick="doPrint()">🖨️ พิมพ์ / PDF</button><button class="btn btn-warning btn-sm" onclick="markSubmit(\''+r.id+'\')">📨 ส่งแล้ว</button></div></div>'+
+      '<div class="card no-print" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px"><div><div class="text-xs text-muted">'+escHtml(dis.formTitle)+'</div><div style="font-size:18px; font-weight:700; color:'+dis.color+'">'+dis.icon+' '+escHtml(dis.name)+' — '+escHtml(r.patientName||'ผู้ป่วย')+'</div></div><div class="flex">'+badge(r.status)+'<button class="btn btn-secondary btn-sm" onclick="navigate(\'form\',{id:\''+r.id+'\'})">✏️ แก้</button><button class="btn btn-secondary btn-sm" style="background:linear-gradient(135deg,#a855f7,#ec4899); color:white; border-color:transparent" onclick="genAI(\''+r.id+'\')">🤖 สร้างรายงาน AI</button><button class="btn btn-primary btn-sm" onclick="doPrint()">🖨️ พิมพ์ / PDF</button><button class="btn btn-warning btn-sm" onclick="markSubmit(\''+r.id+'\')">📨 ส่งแล้ว</button></div></div>'+
+      (r.aiNarrative ? '<div class="card no-print" style="background:linear-gradient(135deg,#faf5ff,#fdf2f8); border-color:#e9d5ff"><div class="flex-between mb-2"><div class="font-semibold" style="color:#7c3aed">🤖 รายงานเชิงพรรณนา (AI-generated)</div><div class="text-xs text-muted">สร้างเมื่อ '+fmtDate(r.aiGeneratedAt)+' โดย '+escHtml(r.aiGeneratedBy||'-')+'</div></div><div class="flex mb-2"><button class="btn btn-secondary btn-sm" onclick="viewAINarrative()">📄 เปิดดูเต็มจอ</button><button class="btn btn-secondary btn-sm" onclick="copyAINarrative()">📋 คัดลอก</button><button class="btn btn-secondary btn-sm" onclick="printAINarrative()">🖨️ พิมพ์/PDF</button><button class="btn btn-secondary btn-sm" onclick="genAI(\''+r.id+'\',true)">🔄 สร้างใหม่</button></div><div id="aiPreview" style="background:white; padding:14px; border-radius:8px; max-height:300px; overflow-y:auto; font-size:13.5px; line-height:1.7; white-space:pre-wrap">'+escHtml(r.aiNarrative.slice(0,1500))+(r.aiNarrative.length>1500?'\n\n... (กดเปิดดูเต็มจอเพื่ออ่านทั้งหมด)':'')+'</div></div>' : '')+
 
       '<div class="card" id="printArea">'+
         '<div class="text-center mb-3"><div class="font-bold" style="font-size:16px">'+escHtml(dis.formTitle)+'</div><div class="text-sm">'+escHtml(settings.hospital||'')+'</div><div class="text-sm">'+escHtml(settings.district||'')+' '+escHtml(settings.province||'')+'</div></div>'+
@@ -1024,6 +1926,8 @@ function renderView(c, id) {
           (r.recommendations?'<div style="margin-top:6px"><b>ข้อเสนอแนะ:</b><br>'+escHtml(r.recommendations).replace(/\n/g,'<br>')+'</div>':'')+
         '</div>'+
 
+        (hasGps || contactGps.length ? '<h2 style="font-size:14px; font-weight:600; border-bottom:1px solid #94a3b8; padding-bottom:2px; margin-top:14px; margin-bottom:6px; color:#075050">📍 แผนที่ตำแหน่งผู้ป่วยและผู้สัมผัส</h2><div id="viewMapBox" class="map-container" style="height:320px"></div><div class="text-xs text-muted mt-2">'+(hasGps?'พิกัดผู้ป่วย: '+r.lat+', '+r.lng+' · ':'')+(contactGps.length?'มีผู้สัมผัสมีพิกัด: '+contactGps.length+' ราย':'')+'</div>' : '')+
+
         (imgs?'<h2 style="font-size:14px; font-weight:600; border-bottom:1px solid #94a3b8; padding-bottom:2px; margin-top:14px; margin-bottom:6px; color:#075050">รูปภาพแนบ</h2><div>'+imgs+'</div>':'')+
 
         '<h2 style="font-size:14px; font-weight:600; border-bottom:1px solid #94a3b8; padding-bottom:2px; margin-top:14px; margin-bottom:6px; color:#075050">8. ผู้สอบสวน</h2>'+
@@ -1035,9 +1939,37 @@ function renderView(c, id) {
         '<div style="margin-top:18px; font-size:11px; color:#475569"><b>เรียน</b> '+escHtml(settings.sentTo||'สำนักงานสาธารณสุขอำเภอห้วยเม็ก')+'<br>เพื่อโปรดทราบและพิจารณาดำเนินการตามแนวทางควบคุมโรคต่อไป<br>จัดทำโดย: '+escHtml(settings.hospital||'รพ.สต.บ้านคำใหญ่')+' | งานควบคุมโรค</div>'+
 
         '<div style="margin-top:30px; display:grid; grid-template-columns:1fr 1fr; gap:30px">'+
-          (team||[]).map(function(m){ return '<div style="text-align:center"><div style="border-bottom:1px dotted #475569; height:30px; margin-bottom:4px"></div><div>( '+escHtml(m.name||'.....................................')+' )</div><div class="text-xs text-slate">'+escHtml(m.position||'')+'</div>'+(m.phone?'<div class="text-xs text-slate">โทร: '+escHtml(m.phone)+'</div>':'')+'</div>'; }).join('')+
+          (team||[]).map(function(m){ return '<div style="text-align:center"><div style="border-bottom:1px dotted #475569; height:30px; margin-bottom:4px"></div><div>( '+escHtml(m.name||'.....................................')+' )</div><div class="text-xs text-muted">'+escHtml(m.position||'')+'</div>'+(m.phone?'<div class="text-xs text-muted">โทร: '+escHtml(m.phone)+'</div>':'')+'</div>'; }).join('')+
         '</div>'+
       '</div>';
+
+    // Render map preview if has coordinates
+    if (hasGps || contactGps.length) {
+      setTimeout(function(){
+        const mapEl = document.getElementById('viewMapBox');
+        if (!mapEl) return;
+        const dis2 = DISEASES[r.disease] || {color:'#888', icon:'•'};
+        const vMap = L.map('viewMapBox').setView([parseFloat(r.lat)||MAP_CENTER[0], parseFloat(r.lng)||MAP_CENTER[1]], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(vMap);
+        const allBounds = [];
+        if (hasGps) {
+          const lat = parseFloat(r.lat), lng = parseFloat(r.lng);
+          L.marker([lat,lng], { icon: makeMarkerIcon(dis2.color, dis2.icon, false) })
+            .bindPopup('<b>'+dis2.icon+' ผู้ป่วย</b><br>'+escHtml(r.patientName||'-'))
+            .addTo(vMap);
+          allBounds.push([lat,lng]);
+        }
+        contactGps.forEach(function(c, i){
+          const cl = parseFloat(c.lat), cln = parseFloat(c.lng);
+          L.marker([cl,cln], { icon: makeMarkerIcon('#f59e0b', String(i+1), true) })
+            .bindPopup('<b>👥 ผู้สัมผัสที่ '+(i+1)+'</b><br>'+escHtml(c.name||'-')+'<br>'+escHtml(c.relation||''))
+            .addTo(vMap);
+          allBounds.push([cl,cln]);
+        });
+        if (allBounds.length > 1) vMap.fitBounds(allBounds, { padding:[30,30], maxZoom:17 });
+        setTimeout(function(){ vMap.invalidateSize(); }, 100);
+      }, 200);
+    }
   }).catch(function(e){ c.innerHTML='<div class="bg-red-soft">'+escHtml(e.message)+'</div>'; });
 }
 
@@ -1058,6 +1990,134 @@ function markSubmit(id) {
     Cache.invReports();
     navigate('view', id);
   }).catch(function(e){ showLoading(false); toast(e.message,'error'); });
+}
+
+/* ===== AI generate ===== */
+function genAI(id, forceNew) {
+  if (forceNew && !confirm('สร้างรายงาน AI ใหม่ทับฉบับเดิม?')) return;
+
+  // แสดง progress modal
+  showAIModal('<div class="ai-loading"><div class="spinner" style="width:48px; height:48px"></div><div class="mt-3 font-semibold">🤖 AI กำลังสร้างรายงาน...</div><div class="text-sm text-muted mt-2">ขั้นตอนนี้อาจใช้เวลา 15-40 วินาที กรุณารอ...</div><div class="text-xs text-muted mt-3">📋 กำลังวิเคราะห์ข้อมูลผู้ป่วย<br>📝 เรียบเรียงเนื้อหาตามมาตรฐานกองระบาดวิทยา<br>✨ ตรวจทานคุณภาพรายงาน</div></div>', 'AI กำลังประมวลผล');
+
+  api('generateNarrativeReport', Session.token, id).then(function(res){
+    if (!res.ok) {
+      showAIModal('<div class="bg-red-soft"><div class="font-semibold mb-2">เกิดข้อผิดพลาด</div><div class="text-sm">'+escHtml(res.error)+'</div>'+
+        (res.error.indexOf('API key')>=0 ? '<div class="mt-3"><button class="btn btn-primary btn-sm" onclick="closeAIModal();navigate(\'settings\')">ไปหน้าตั้งค่า API Key</button></div>' : '')+
+        '</div>', 'ผิดพลาด');
+      return;
+    }
+    Cache.invReports();
+    showAINarrative(res.narrative, res.generatedAt);
+  }).catch(function(e){
+    showAIModal('<div class="bg-red-soft">'+escHtml(e.message)+'</div>', 'ผิดพลาด');
+  });
+}
+
+function showAIModal(html, title) {
+  let m = document.getElementById('aiModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'aiModal';
+    m.style.cssText = 'position:fixed; inset:0; background:rgba(15,23,42,0.7); z-index:500; display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px);';
+    m.innerHTML = '<div style="background:white; border-radius:14px; max-width:900px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.3)"><div id="aiHeader" style="padding:18px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; background:linear-gradient(135deg,#faf5ff,#fdf2f8); border-radius:14px 14px 0 0"><div style="font-weight:600; color:#7c3aed" id="aiTitle">รายงาน AI</div><button class="btn-icon btn-ghost" onclick="closeAIModal()" aria-label="ปิด">✕</button></div><div id="aiBody" style="padding:22px; overflow-y:auto; flex:1"></div><div id="aiFooter" style="padding:14px 22px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; flex-shrink:0; background:var(--bg-soft); border-radius:0 0 14px 14px"></div></div>';
+    document.body.appendChild(m);
+  }
+  document.getElementById('aiTitle').textContent = title || 'รายงาน AI';
+  document.getElementById('aiBody').innerHTML = html;
+  document.getElementById('aiFooter').innerHTML = '<button class="btn btn-secondary btn-sm" onclick="closeAIModal()">ปิด</button>';
+  m.style.display = 'flex';
+}
+
+function closeAIModal() {
+  const m = document.getElementById('aiModal');
+  if (m) m.style.display = 'none';
+}
+
+function showAINarrative(narrative, generatedAt) {
+  window._aiNarrative = narrative;
+  const html = '<div id="aiContent" style="line-height:1.85; font-size:14.5px">'+renderMarkdown(narrative)+'</div>'+
+    '<div class="text-xs text-muted mt-4" style="border-top:1px dashed var(--border); padding-top:10px">⚠️ รายงานนี้สร้างโดย AI — กรุณาตรวจสอบความถูกต้องและแก้ไขให้สมบูรณ์ก่อนส่งหน่วยงานต้นสังกัด</div>';
+  showAIModal(html, '🤖 รายงานเชิงพรรณนา (AI)');
+  document.getElementById('aiFooter').innerHTML =
+    '<button class="btn btn-secondary btn-sm" onclick="copyAINarrative()">📋 คัดลอก</button>'+
+    '<button class="btn btn-secondary btn-sm" onclick="printAINarrative()">🖨️ พิมพ์/PDF</button>'+
+    '<button class="btn btn-secondary btn-sm" onclick="downloadAINarrative()">💾 ดาวน์โหลด .doc</button>'+
+    '<button class="btn btn-primary btn-sm" onclick="closeAIModal();navigate(\'view\',(window._currentReportId||location.hash))">เสร็จ</button>';
+  toast('สร้างรายงาน AI สำเร็จ','success');
+}
+
+function viewAINarrative() {
+  const r = Cache.reports && Cache.reports.find(function(x){return x.id===window._currentReportId;});
+  if (r && r.aiNarrative) showAINarrative(r.aiNarrative, r.aiGeneratedAt);
+  else api('getReport', Session.token, window._currentReportId).then(function(r){
+    if (r && r.aiNarrative) showAINarrative(r.aiNarrative, r.aiGeneratedAt);
+  });
+}
+
+function copyAINarrative() {
+  const text = window._aiNarrative || '';
+  if (!text) return toast('ยังไม่มีเนื้อหา','error');
+  navigator.clipboard.writeText(text).then(function(){
+    toast('คัดลอกแล้ว','success');
+  }).catch(function(){
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('คัดลอกแล้ว','success'); } catch(e){ toast('คัดลอกไม่สำเร็จ','error'); }
+    ta.remove();
+  });
+}
+
+function printAINarrative() {
+  const text = window._aiNarrative || '';
+  if (!text) return toast('ยังไม่มีเนื้อหา','error');
+  const w = window.open('', '_blank');
+  w.document.write('<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>รายงานเชิงพรรณนา</title><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:"IBM Plex Sans Thai",Sarabun,Tahoma,sans-serif; max-width:780px; margin:30px auto; padding:0 20px; line-height:1.85; color:#1f2937}h1,h2,h3{color:#075050}h1{font-size:20px; text-align:center}h2{font-size:17px; margin-top:24px; padding-bottom:6px; border-bottom:1.5px solid #94a3b8}h3{font-size:15px; margin-top:18px}p{margin:8px 0}ul,ol{margin:8px 0; padding-left:28px}li{margin:4px 0}strong{font-weight:600}code{background:#f1f5f9; padding:1px 5px; border-radius:3px; font-size:0.9em}@media print{body{margin:0}}</style></head><body>');
+  w.document.write(renderMarkdown(text));
+  w.document.write('<div style="margin-top:36px; font-size:11px; color:#64748b; border-top:1px solid #e2e8f0; padding-top:8px">รายงานสร้างโดยระบบช่วยเขียนรายงานสอบสวนโรค รพ.สต.บ้านคำใหญ่ อ.ห้วยเม็ก จ.กาฬสินธุ์ · '+new Date().toLocaleDateString('th-TH')+'</div>');
+  w.document.write('</body></html>');
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 800);
+}
+
+function downloadAINarrative() {
+  const text = window._aiNarrative || '';
+  if (!text) return toast('ยังไม่มีเนื้อหา','error');
+  // ใช้ HTML-to-Word trick — Word เปิดไฟล์ .doc ที่เป็น HTML ได้
+  const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><title>รายงาน</title></head><body style="font-family:Sarabun,Tahoma,sans-serif; line-height:1.85">'+renderMarkdown(text)+'</body></html>';
+  const blob = new Blob(['﻿' + html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'รายงานเชิงพรรณนา_'+todayISO()+'.doc';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('ดาวน์โหลด .doc สำเร็จ','success');
+}
+
+/* ===== Mini Markdown renderer ===== */
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = escHtml(text);
+  // Headings
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/(^|[^\*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  // Bullets
+  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>[^<]*<\/li>\n?)+/g, function(m){ return '<ul>'+m+'</ul>'; });
+  // Numbered (basic)
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<p style="margin-left:20px"><strong>$1.</strong> $2</p>');
+  // Paragraphs (split by double newline)
+  html = html.split(/\n\n+/).map(function(p){
+    if (p.match(/^<(h\d|ul|ol|p|li|strong)/)) return p;
+    return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+  }).join('\n');
+  return html;
 }
 
 console.log('[script] loaded OK');
