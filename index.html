@@ -11,12 +11,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { font-family: 'Sarabun', sans-serif; }
   body { background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); min-height:100vh; }
   .sidebar { background: linear-gradient(180deg, #0c4a6e 0%, #075985 100%); }
-  .nav-item { transition: all .2s; cursor: pointer; }
+  .nav-item { transition: all .2s; }
   .nav-item:hover { background: rgba(255,255,255,0.1); }
   .nav-item.active { background: rgba(255,255,255,0.2); border-left: 4px solid #38bdf8; }
   .card { background:white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
@@ -47,35 +46,23 @@
   .badge-yellow { background:#fef3c7; color:#92400e; }
   .badge-red { background:#fee2e2; color:#991b1b; }
   .stat-card { background:white; padding:20px; border-radius:12px; border-left: 4px solid; }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:50; display:flex; align-items:center; justify-content:center; }
+  .modal { background:white; border-radius:12px; max-width: 90vw; max-height: 90vh; overflow:auto; }
+  .signature-pad { border: 2px dashed #94a3b8; border-radius: 8px; background:#f8fafc; cursor: crosshair; }
+  @media print {
+    .no-print { display:none !important; }
+    body { background:white; }
+  }
+  .field-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom: 10px; }
+  .field-row label { font-size: 14px; color:#334155; min-width: max-content; }
+  .field-row input, .field-row select { flex:1; min-width: 100px; }
   .pdf-page { width: 210mm; min-height: 297mm; padding: 15mm; background: white; font-size: 14px; line-height: 1.5; }
   .pdf-page h1 { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 8px; }
   .pdf-page h2 { font-size: 15px; font-weight: 700; margin-top: 12px; margin-bottom: 6px; color:#0c4a6e; border-bottom: 1px solid #cbd5e1; padding-bottom:4px; }
   .pdf-page table { font-size: 13px; }
   .pdf-page td { padding: 4px 6px; border:1px solid #cbd5e1; vertical-align: top; }
   .pdf-page .label { background: #f1f5f9; font-weight: 600; width: 35%; }
-  .field-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom: 10px; }
-  .field-row label { font-size: 14px; color:#334155; min-width: max-content; }
-  .field-row input, .field-row select { flex:1; min-width: 100px; }
 </style>
-<script>
-// ============== NAVIGATION (Global Scope) ==============
-function goPage(page) {
-  console.log('Navigating to:', page);
-  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-  const target = document.getElementById('page-' + page);
-  if (target) target.classList.remove('hidden');
-  
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const nav = document.getElementById('nav-' + page);
-  if (nav) nav.classList.add('active');
-
-  if (page === 'dashboard') renderDashboard();
-  if (page === 'reports') renderReports();
-  if (page === 'new') renderNewForm();
-  if (page === 'team') renderTeam();
-  if (page === 'settings') loadSettingsForm();
-}
-</script>
 </head>
 <body>
 <div class="flex min-h-screen">
@@ -88,21 +75,21 @@ function goPage(page) {
       <div class="text-xs text-sky-200 mt-1">อ.ห้วยเม็ก จ.กาฬสินธุ์</div>
     </div>
     <nav class="py-2">
-      <div id="nav-dashboard" class="nav-item active flex items-center gap-3 px-5 py-3" onclick="goPage('dashboard')">
+      <a class="nav-item flex items-center gap-3 px-5 py-3 cursor-pointer" data-page="dashboard">
         <span>📊</span><span>แดชบอร์ด</span>
-      </div>
-      <div id="nav-reports" class="nav-item flex items-center gap-3 px-5 py-3" onclick="goPage('reports')">
+      </a>
+      <a class="nav-item flex items-center gap-3 px-5 py-3 cursor-pointer" data-page="reports">
         <span>📋</span><span>รายงานสอบสวน</span>
-      </div>
-      <div id="nav-new" class="nav-item flex items-center gap-3 px-5 py-3" onclick="goPage('new')">
+      </a>
+      <a class="nav-item flex items-center gap-3 px-5 py-3 cursor-pointer" data-page="new">
         <span>➕</span><span>สร้างรายงานใหม่</span>
-      </div>
-      <div id="nav-team" class="nav-item flex items-center gap-3 px-5 py-3" onclick="goPage('team')">
+      </a>
+      <a class="nav-item flex items-center gap-3 px-5 py-3 cursor-pointer" data-page="team">
         <span>👥</span><span>ทีมสอบสวนโรค</span>
-      </div>
-      <div id="nav-settings" class="nav-item flex items-center gap-3 px-5 py-3" onclick="goPage('settings')">
+      </a>
+      <a class="nav-item flex items-center gap-3 px-5 py-3 cursor-pointer" data-page="settings">
         <span>⚙️</span><span>ตั้งค่า</span>
-      </div>
+      </a>
     </nav>
     <div class="absolute bottom-4 left-5 text-xs text-sky-300">
       อ้างอิง: กองระบาดวิทยา<br>กรมควบคุมโรค กระทรวงสาธารณสุข
@@ -117,18 +104,16 @@ function goPage(page) {
       <h1 class="text-2xl font-bold text-slate-800">แดชบอร์ดสรุปการสอบสวนโรค</h1>
       <p class="text-slate-500 mb-6">ภาพรวมการรายงานสอบสวนโรคเฉพาะราย</p>
 
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="stat-cards">
-        <div class="stat-card border-l-slate-300">กำลังโหลด...</div>
-      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="stat-cards"></div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div class="card p-5">
           <h3 class="font-semibold text-slate-700 mb-3">จำนวนรายงานแยกตามโรค</h3>
-          <div style="height: 200px;"><canvas id="chart-disease"></canvas></div>
+          <canvas id="chart-disease" height="200"></canvas>
         </div>
         <div class="card p-5">
           <h3 class="font-semibold text-slate-700 mb-3">รายงานรายเดือน (12 เดือนย้อนหลัง)</h3>
-          <div style="height: 200px;"><canvas id="chart-monthly"></canvas></div>
+          <canvas id="chart-monthly" height="200"></canvas>
         </div>
       </div>
 
@@ -221,9 +206,21 @@ function goPage(page) {
         <div class="field-row"><label class="w-48">โทรศัพท์:</label><input id="set-phone" type="text"/></div>
         <div class="field-row"><label class="w-48">ส่งรายงานถึง:</label><input id="set-receiver" type="text"/></div>
         <div class="field-row"><label class="w-48">ผู้อำนวยการ:</label><input id="set-director" type="text"/></div>
-        <div class="field-row"><label class="w-48">ตำแหน่ง:</label><input id="set-director-pos" type="text"/></div>
-        <div class="field-row gap-2">
+        <div class="field-row"><label class="w-48">ตำแหน่ง ผอ.:</label><input id="set-director-pos" type="text"/></div>
+        <div class="text-right">
           <button class="btn btn-success" onclick="saveSettings()">💾 บันทึก</button>
+        </div>
+      </div>
+
+      <div class="card p-5 mt-4">
+        <h3 class="font-semibold text-slate-700 mb-3">การจัดการข้อมูล</h3>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost" onclick="exportData()">📤 ส่งออกข้อมูลทั้งหมด (JSON)</button>
+          <label class="btn btn-ghost cursor-pointer">
+            📥 นำเข้าข้อมูล
+            <input type="file" accept=".json" onchange="importData(event)" class="hidden"/>
+          </label>
+          <button class="btn btn-danger" onclick="clearAllData()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
       </div>
     </section>
@@ -231,256 +228,874 @@ function goPage(page) {
   </main>
 </div>
 
+<!-- PDF Render container (hidden) -->
 <div id="pdf-render-area" style="position:absolute; left:-9999px; top:0;"></div>
 
+<!-- ============================ JAVASCRIPT ============================ -->
 <script>
-// ============== SUPABASE SETUP ==============
-const SUPABASE_URL = 'https://jvypennmelqnicxiuywz.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_qdXh02tP6KHTkp65hRBHnQ_SlSDrYdP';
-let supabase = null;
-
-try {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-} catch (e) {
-  console.error('Supabase Init Error:', e);
-}
-
-// ============== STORAGE ADAPTER ==============
+// ============== STORAGE ==============
 const STORE = {
-  reports: async () => {
-    try {
-      const { data, error } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
-    } catch (e) {
-      console.error('Fetch reports error:', e);
-      return [];
-    }
-  },
-  saveReports: async (reports) => {
-    try {
-      for (const r of reports) {
-        await supabase.from('reports').upsert({
-          id: r.id, disease: r.disease, status: r.status, data: r.data, updated_at: new Date().toISOString()
-        });
-      }
-    } catch (e) { console.error('Save reports error:', e); }
-  },
-  team: async () => {
-    try {
-      const { data, error } = await supabase.from('team_members').select('*');
-      if (error) throw error;
-      return data || [];
-    } catch (e) { return []; }
-  },
-  saveTeam: async (team) => {
-    try {
-      await supabase.from('team_members').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      for (const m of team) {
-        await supabase.from('team_members').insert({ name: m.name, position: m.position, role: m.role });
-      }
-    } catch (e) { console.error('Save team error:', e); }
-  },
-  settings: async () => {
-    try {
-      const { data, error } = await supabase.from('settings').select('*').eq('id', 1).single();
-      return data || {};
-    } catch (e) { return {}; }
-  },
-  saveSettings: async (s) => {
-    try {
-      await supabase.from('settings').upsert({ id: 1, ...s, updated_at: new Date().toISOString() });
-    } catch (e) { console.error('Save settings error:', e); }
-  }
+  reports: () => JSON.parse(localStorage.getItem('di_reports') || '[]'),
+  saveReports: (d) => localStorage.setItem('di_reports', JSON.stringify(d)),
+  team: () => JSON.parse(localStorage.getItem('di_team') || '[]'),
+  saveTeam: (d) => localStorage.setItem('di_team', JSON.stringify(d)),
+  settings: () => JSON.parse(localStorage.getItem('di_settings') || 'null'),
+  saveSettings: (d) => localStorage.setItem('di_settings', JSON.stringify(d)),
 };
 
-// ============== CONSTANTS ==============
+// Default settings
+if (!STORE.settings()) {
+  STORE.saveSettings({
+    org: 'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคำใหญ่',
+    address: '',
+    tambon: 'คำใหญ่',
+    amphoe: 'ห้วยเม็ก',
+    province: 'กาฬสินธุ์',
+    phone: '',
+    receiver: 'สำนักงานสาธารณสุขอำเภอห้วยเม็ก',
+    director: '',
+    directorPos: 'ผู้อำนวยการโรงพยาบาลส่งเสริมสุขภาพตำบล'
+  });
+}
+if (STORE.team().length === 0) {
+  STORE.saveTeam([
+    {name: '', position: 'หัวหน้าทีมสอบสวนโรค', role: 'หัวหน้าทีม'},
+    {name: '', position: 'ผู้สอบสวนโรค', role: 'สมาชิกทีม'},
+    {name: '', position: 'ผู้สอบสวนโรค', role: 'สมาชิกทีม'},
+  ]);
+}
+
+// ============== DISEASE DEFINITIONS ==============
+// Each disease has: id, name (Thai), nameEn, code, sections[]
 const DISEASES = [
-  { id: 'hfmd', name: 'โรคมือ เท้า ปาก', nameEn: 'HFMD', icon:'🤲' },
-  { id: 'dengue', name: 'ไข้เลือดออก', nameEn: 'Dengue', icon:'🦟' },
-  { id: 'influenza1', name: 'ไข้หวัดใหญ่ (1)', nameEn: 'Flu 1', icon:'🤧' },
-  { id: 'influenza2', name: 'ไข้หวัดใหญ่ (2)', nameEn: 'Flu 2', icon:'😷' },
-  { id: 'leptospirosis', name: 'เลปโตสไปโรสิส', nameEn: 'Lepto', icon:'🐀' },
-  { id: 'scrubtyphus', name: 'สครับไทฟัส', nameEn: 'Scrub', icon:'🪲' },
-  { id: 'melioidosis', name: 'เมลิออยโดสิส', nameEn: 'Melio', icon:'🌾' },
-  { id: 'streptoccocus', name: 'โรคหูดับ', nameEn: 'Strep', icon:'🐖' },
-  { id: 'tuberculosis', name: 'วัณโรค', nameEn: 'TB', icon:'🫁' },
+  { id: 'hfmd', name: 'โรคมือ เท้า ปาก / Enterovirus', nameEn: 'Hand foot and mouth disease', icon:'🤲' },
+  { id: 'dengue', name: 'ไข้เลือดออก', nameEn: 'Dengue fever', icon:'🦟' },
+  { id: 'influenza1', name: 'ไข้หวัดใหญ่/SARI (รายงาน 1)', nameEn: 'Influenza/SARI Report', icon:'🤧' },
+  { id: 'influenza2', name: 'ไข้หวัดใหญ่/SARI (สอบสวน 2)', nameEn: 'Influenza/SARI Investigation', icon:'😷' },
+  { id: 'leptospirosis', name: 'เลปโตสไปโรสิส', nameEn: 'Leptospirosis', icon:'🐀' },
+  { id: 'scrubtyphus', name: 'สครับไทฟัส', nameEn: 'Scrub typhus', icon:'🪲' },
+  { id: 'melioidosis', name: 'เมลิออยโดสิส', nameEn: 'Melioidosis', icon:'🌾' },
+  { id: 'streptoccocus', name: 'โรคหูดับ (Streptococcus suis)', nameEn: 'Streptococcus suis', icon:'🐖' },
+  { id: 'tuberculosis', name: 'วัณโรค', nameEn: 'Tuberculosis', icon:'🫁' },
   { id: 'anthrax', name: 'แอนแทรกซ์', nameEn: 'Anthrax', icon:'🐂' },
-  { id: 'afp', name: 'AFP / โปลิโอ', nameEn: 'AFP', icon:'🦵' },
-  { id: 'aefi', name: 'AEFI วัคซีน', nameEn: 'AEFI', icon:'💉' },
+  { id: 'afp', name: 'AFP / โปลิโอ', nameEn: 'Acute Flaccid Paralysis', icon:'🦵' },
+  { id: 'aefi', name: 'AEFI หลังได้รับวัคซีน', nameEn: 'Adverse Events Following Immunization', icon:'💉' },
 ];
 
-const SYM = { hfmd:['ไข้','แผลในปาก','ผื่นมือเท้า'], dengue:['ไข้สูง','ปวดหัว','จุดเลือดออก'], influenza1:['ไข้','ไอ','เจ็บคอ'], influenza2:['ไข้','ไอ','หอบ'], leptospirosis:['ไข้','ปวดน่อง','ตาแดง'], scrubtyphus:['ไข้','Eschar','ผื่น'], melioidosis:['ไข้','ฝีหนอง'], streptoccocus:['ไข้','หูตึง','คอแข็ง'], tuberculosis:['ไอเรื้อรัง','น้ำหนักลด'], anthrax:['แผลดำ','ไข้'], afp:['อ่อนแรงเฉียบพลัน'], aefi:['ไข้','บวม','ชัก'] };
+// Common patient info section reused across most forms
+const SEC_PATIENT = {
+  title: '1. ข้อมูลทั่วไปของผู้ป่วย',
+  fields: [
+    {k:'prefix', l:'คำนำหน้า', t:'select', opts:['นาย','นาง','นางสาว','เด็กชาย','เด็กหญิง'], w:'w-32'},
+    {k:'fullname', l:'ชื่อ-สกุล', t:'text', w:'flex-1'},
+    {k:'idcard', l:'เลขบัตรประชาชน 13 หลัก', t:'text', w:'w-64'},
+    {k:'age_y', l:'อายุ (ปี)', t:'number', w:'w-24'},
+    {k:'age_m', l:'เดือน', t:'number', w:'w-20'},
+    {k:'sex', l:'เพศ', t:'select', opts:['ชาย','หญิง'], w:'w-28'},
+    {k:'hn', l:'HN', t:'text', w:'w-32'},
+    {k:'an', l:'AN', t:'text', w:'w-32'},
+    {k:'religion', l:'ศาสนา', t:'text', w:'w-32'},
+    {k:'nationality', l:'สัญชาติ', t:'text', w:'w-32'},
+    {k:'occupation', l:'อาชีพ', t:'text', w:'flex-1'},
+    {k:'workplace', l:'ที่ทำงาน/โรงเรียน', t:'text', w:'flex-1'},
+    {k:'classroom', l:'ชั้นเรียน', t:'text', w:'w-32'},
+  ]
+};
+const SEC_ADDRESS = {
+  title: 'ที่อยู่ขณะป่วย',
+  fields: [
+    {k:'addr_no', l:'บ้านเลขที่', t:'text', w:'w-28'},
+    {k:'addr_moo', l:'หมู่ที่', t:'text', w:'w-20'},
+    {k:'addr_village', l:'ชื่อหมู่บ้าน/ชุมชน', t:'text', w:'flex-1'},
+    {k:'addr_soi', l:'ซอย', t:'text', w:'w-32'},
+    {k:'addr_road', l:'ถนน', t:'text', w:'w-32'},
+    {k:'addr_tambon', l:'ตำบล', t:'text', w:'w-40'},
+    {k:'addr_amphoe', l:'อำเภอ', t:'text', w:'w-40'},
+    {k:'addr_province', l:'จังหวัด', t:'text', w:'w-40'},
+    {k:'phone', l:'โทรศัพท์', t:'tel', w:'w-40'},
+    {k:'addr_zone', l:'พื้นที่', t:'select', opts:['เทศบาลนคร','เทศบาลเมือง','เทศบาลตำบล','อบต.'], w:'w-40'},
+    {k:'gps', l:'พิกัด GPS (ถ้าทราบ)', t:'text', w:'flex-1'},
+  ]
+};
+const SEC_GUARDIAN = {
+  title: 'ข้อมูลผู้ปกครอง (กรณีอายุต่ำกว่า 15 ปี)',
+  fields: [
+    {k:'guard_name', l:'ชื่อ-สกุลผู้ปกครอง', t:'text', w:'flex-1'},
+    {k:'guard_relation', l:'เกี่ยวข้องเป็น', t:'text', w:'w-40'},
+    {k:'guard_occ', l:'อาชีพ', t:'text', w:'w-40'},
+    {k:'guard_phone', l:'โทรศัพท์', t:'tel', w:'w-40'},
+  ]
+};
+const SEC_VITAL = {
+  title: '2. อาการและอาการแสดง / สัญญาณชีพแรกรับ',
+  fields: [
+    {k:'onset_date', l:'วันที่เริ่มป่วย', t:'date', w:'w-44'},
+    {k:'onset_time', l:'เวลา', t:'time', w:'w-32'},
+    {k:'temp', l:'อุณหภูมิ (°C)', t:'number', w:'w-32', step:'0.1'},
+    {k:'pulse', l:'ชีพจร (ครั้ง/นาที)', t:'number', w:'w-36'},
+    {k:'rr', l:'หายใจ (ครั้ง/นาที)', t:'number', w:'w-36'},
+    {k:'bp', l:'ความดัน (มม.ปรอท)', t:'text', w:'w-36'},
+  ]
+};
+
+// Disease-specific symptom checklists (multi-checkbox keys)
+const SYM = {
+  hfmd: ['ไข้','เจ็บคอ/แผลในปาก','ผื่น/ตุ่มน้ำที่มือ-เท้า','อาเจียน','ปวดศีรษะ','ชัก','ซึม','ภาวะแทรกซ้อน (myocarditis/encephalitis)'],
+  dengue: ['ไข้/ไข้เฉียบพลัน','ปวดศีรษะ','ปวดกระบอกตา','ปวดกล้ามเนื้อ','ปวดข้อ','ผื่น','คลื่นไส้/อาเจียน','Tourniquet test +','เลือดออกผิดปกติ','ตับโต','ภาวะช็อก'],
+  influenza1: ['ไข้','ไอ','เจ็บคอ','ปวดกล้ามเนื้อ','มีน้ำมูก','มีเสมหะ','หายใจลำบาก','ปวดศีรษะ','ถ่ายเหลว','ปอดอักเสบ'],
+  influenza2: ['ไข้ ≥ 38°C','ไอ','เจ็บคอ','ปวดกล้ามเนื้อ','น้ำมูก','เสมหะ','dyspnea','ปวดศีรษะ','ถ่ายเหลว','ปอดอักเสบ','ARDS'],
+  leptospirosis: ['ไข้สูงเฉียบพลัน','ปวดศีรษะ','ปวดกล้ามเนื้อน่อง','ตาแดง (conjunctival suffusion)','ดีซ่าน','ไตวาย','ปวดท้อง','ผื่น','ไอเป็นเลือด','เยื่อหุ้มสมองอักเสบ'],
+  scrubtyphus: ['ไข้สูงเฉียบพลัน','ปวดศีรษะ','ปวดกล้ามเนื้อ','ผื่น (maculopapular)','Eschar','ต่อมน้ำเหลืองโต','ตับ-ม้ามโต','ไอ','คลื่นไส้/อาเจียน'],
+  melioidosis: ['ไข้','ภาวะติดเชื้อในกระแสเลือด','ปอดอักเสบ','ฝี (abscess)','ข้ออักเสบ','ติดเชื้อทางเดินปัสสาวะ','แผลที่ผิวหนัง'],
+  streptoccocus: ['ไข้','หูหนวก/หูตึงเฉียบพลัน','เวียนศีรษะ','คลื่นไส้/อาเจียน','ปวดศีรษะ','คอแข็ง','ภาวะติดเชื้อในกระแสเลือด','เยื่อหุ้มสมองอักเสบ','ข้ออักเสบ','ภาวะช็อก'],
+  tuberculosis: ['ไข้','ไอเรื้อรัง > 2 สัปดาห์','ไอมีเสมหะปนเลือด','น้ำหนักลด','เหงื่อออกกลางคืน','เบื่ออาหาร','เจ็บหน้าอก','หายใจลำบาก','ต่อมน้ำเหลืองโต'],
+  anthrax: ['ไข้','แผลที่ผิวหนัง (eschar)','ต่อมน้ำเหลืองโต','ปอดอักเสบ','ปวดท้อง/ถ่ายเป็นเลือด','คลื่นไส้/อาเจียน','ภาวะติดเชื้อในกระแสเลือด','เยื่อหุ้มสมองอักเสบ'],
+  afp: ['กล้ามเนื้ออ่อนแรงเฉียบพลัน','ขาอ่อนแรง 1 ข้าง','ขาอ่อนแรง 2 ข้าง','แขนอ่อนแรง','ไข้นำ','ปวดกล้ามเนื้อ','การกลืนผิดปกติ','การหายใจผิดปกติ'],
+  aefi: ['ไข้','บวม/ปวด/แดง บริเวณฉีด','ผื่น/ลมพิษ','ปวดศีรษะ','คลื่นไส้/อาเจียน','ชัก','Anaphylaxis','HHE','BCG lymphadenitis','เสียชีวิต'],
+};
+
+// Risk factor / exposure section (varies by disease)
+const RISK = {
+  hfmd: ['เคยสัมผัสผู้ป่วย HFMD','สมาชิกในครอบครัวเป็น HFMD','ในชั้นเรียน/ศพด.มีผู้ป่วย','ใช้ของเล่น/ของใช้ร่วมกัน','ไปสถานที่แออัดในช่วง 14 วัน'],
+  dengue: ['มีลูกน้ำยุงลายในบ้าน/รอบบ้าน','ในหมู่บ้านมีผู้ป่วยไข้เลือดออก','เดินทางไปพื้นที่ระบาด','นอนกลางวัน','ใช้ยากันยุง'],
+  influenza1: ['สัมผัสผู้ป่วยไข้หวัด','สัมผัสสัตว์ปีกป่วย/ตาย','ทำงานในฟาร์มสัตว์ปีก','เดินทางไปพื้นที่ระบาด','บุคลากรการแพทย์'],
+  influenza2: ['สัมผัสผู้ป่วยไข้หวัด','สัมผัสสัตว์ปีกป่วย/ตาย','ทำงานในฟาร์มสัตว์ปีก','เดินทางไปพื้นที่ระบาด','บุคลากรการแพทย์','ไปตลาดสด'],
+  leptospirosis: ['ลุยน้ำท่วม/น้ำขัง','ทำนา/ไร่','สัมผัสปัสสาวะหนู/สุนัข','มีบาดแผลแล้วลงน้ำ','จับปลา/สัตว์น้ำ','ดื่มน้ำจากแหล่งธรรมชาติ'],
+  scrubtyphus: ['เข้าป่า/ไร่/สวน','สัมผัสหญ้า/ใบไม้','พบ Eschar','พบ Chigger Bite','นอนค้างในป่า','ตัดหญ้า/เก็บของป่า'],
+  melioidosis: ['ทำนา/ไร่/สวน','ลุยน้ำ/โคลน','เบาหวาน','ไตวายเรื้อรัง','ดื่มสุราเป็นประจำ','มีบาดแผลแล้วสัมผัสดิน/น้ำ'],
+  streptoccocus: ['กินหมูดิบ/ลาบดิบ/หลู้','กินเลือดสด/ส้มจิ้ม','ชำแหละหมู','ทำงานฟาร์มหมู','สัมผัสหมูป่วย/ตาย','มีบาดแผลแล้วสัมผัสหมู'],
+  tuberculosis: ['สัมผัสผู้ป่วยวัณโรค','HIV +','เบาหวาน','ใช้ยากดภูมิ','ผู้ต้องขัง','บุคลากรการแพทย์','ผู้สูงอายุ','สูบบุหรี่','ดื่มสุรา'],
+  anthrax: ['สัมผัสสัตว์ป่วย/ตาย (วัว/ควาย/แพะ/แกะ)','ชำแหละสัตว์','กินเนื้อดิบ/ปรุงไม่สุก','ทำงานในฟาร์ม','สัมผัสหนังสัตว์/ขนสัตว์','สัมผัสดินบริเวณที่ฝังซากสัตว์'],
+  afp: ['ประวัติการได้รับวัคซีน OPV','สัมผัสผู้ป่วย AFP','เดินทางไปพื้นที่ระบาด Polio','ผู้สัมผัสในครอบครัว','การดื่มน้ำ/อาหารปนเปื้อน'],
+  aefi: ['มีโรคประจำตัว','แพ้ยา/อาหาร','เคยมีอาการหลังรับวัคซีนครั้งก่อน','เพิ่งหายป่วยภายใน 1 สัปดาห์','ตั้งครรภ์','ภาวะภูมิคุ้มกันบกพร่อง'],
+};
+
+// Lab tests by disease
+const LAB = {
+  hfmd: ['Throat swab/Rectal swab','RT-PCR Enterovirus','EV71 detection','CSF analysis'],
+  dengue: ['CBC','Hct/Plt monitoring','NS1 antigen','Dengue IgM/IgG','PCR Dengue','Tourniquet test'],
+  influenza1: ['Nasopharyngeal swab','Throat swab','RT-PCR Influenza','RT-PCR SARS-CoV-2','CXR'],
+  influenza2: ['Nasopharyngeal swab','RT-PCR Influenza A/B','RT-PCR Subtype','Sputum culture','CXR','ABG'],
+  leptospirosis: ['CBC','BUN/Cr','LFT','Urinalysis','MAT','IgM Lepto','PCR','Hemoculture'],
+  scrubtyphus: ['CBC','LFT','Weil-Felix','IgM Scrub','PCR','Eschar swab'],
+  melioidosis: ['Hemoculture','Pus culture','Sputum culture','Urine culture','IFA','Indirect Hemagglutination','CXR'],
+  streptoccocus: ['Hemoculture','CSF culture','CSF analysis','Audiogram','MRI/CT brain'],
+  tuberculosis: ['AFB sputum smear (3 ครั้ง)','Sputum culture','Xpert MTB/RIF','CXR','HIV test','TST/IGRA'],
+  anthrax: ['Gram stain','Wound swab','Hemoculture','PCR Bacillus anthracis','ELISA','CXR'],
+  afp: ['Stool collection (2 specimens, 24-48 hr apart, within 14 days)','EMG','MRI Spine','CSF analysis','Polio virus isolation'],
+  aefi: ['CBC','Vitals monitoring','ECG','CXR','Toxicology screen','Vaccine lot investigation'],
+};
+
+// Diagnosis / case classification
+const DX = {
+  hfmd: ['Suspect','Probable','Confirmed','ผู้สัมผัส'],
+  dengue: ['DF (Dengue Fever)','DHF Grade I','DHF Grade II','DHF Grade III','DHF Grade IV','DSS','Suspect','Confirmed'],
+  influenza1: ['Suspect ILI','Suspect SARI','Confirmed Influenza','Confirmed Avian Influenza','Pneumonia ไม่ทราบสาเหตุ'],
+  influenza2: ['Suspect','Probable','Confirmed Influenza A','Confirmed Influenza B','Confirmed H5N1','Pneumonia ไม่ทราบสาเหตุ'],
+  leptospirosis: ['Suspect','Probable','Confirmed','ผู้ป่วยตามนิยาม WHO'],
+  scrubtyphus: ['Suspect','Probable','Confirmed'],
+  melioidosis: ['Suspect','Probable','Confirmed (culture +)'],
+  streptoccocus: ['Suspect','Probable','Confirmed (culture +)'],
+  tuberculosis: ['Bacteriologically confirmed','Clinically diagnosed','New','Relapse','Treatment after failure','Treatment after loss to follow-up','Other previously treated','MDR-TB','XDR-TB'],
+  anthrax: ['Suspect','Probable','Confirmed Cutaneous','Confirmed Inhalation','Confirmed Gastrointestinal'],
+  afp: ['Hot case','Non-Hot case','Confirmed Polio','Discarded','Compatible','VAPP','VDPV'],
+  aefi: ['Minor (mild)','Severe (Hospitalized)','Serious (Disability/Death)','Cluster'],
+};
+
+const CONTROL_MEASURES = [
+  'แยกผู้ป่วย/ให้คำแนะนำการแยก','ให้สุขศึกษาแก่ผู้ป่วยและครอบครัว','ค้นหาผู้ป่วยเพิ่มเติมในชุมชน',
+  'ให้สุขศึกษาในชุมชน/โรงเรียน','สำรวจและกำจัดแหล่งโรค','ให้วัคซีนป้องกัน (ถ้ามี)',
+  'ให้ยาป้องกันแก่ผู้สัมผัสใกล้ชิด','รายงาน รง.506','ส่งต่อ สสอ./สสจ.','ติดตามอาการ 14-28 วัน',
+  'ปรับสภาพแวดล้อม','ประสานหน่วยงานที่เกี่ยวข้อง'
+];
 
 // ============== STATE ==============
+let currentReport = null;
 let currentDisease = null;
 let editId = null;
-let currentReport = null;
-let chart1 = null;
-let chart2 = null;
-
-// ============== DASHBOARD ==============
-async function renderDashboard() {
-  const reports = await STORE.reports();
-  const stats = [
-    { l: 'รวม', v: reports.length, c: '#0284c7' },
-    { l: 'เสร็จสิ้น', v: reports.filter(r=>r.status==='completed').length, c: '#16a34a' },
-    { l: 'ส่งแล้ว', v: reports.filter(r=>r.status==='submitted').length, c: '#7c3aed' },
-    { l: 'ร่าง', v: reports.filter(r=>r.status==='draft').length, c: '#f59e0b' }
-  ];
-  document.getElementById('stat-cards').innerHTML = stats.map(s => `
-    <div class="stat-card" style="border-left: 4px solid ${s.c}">
-      <div class="text-xs text-slate-500">${s.l}</div>
-      <div class="text-xl font-bold">${s.v}</div>
-    </div>`).join('');
-
-  const disData = {};
-  reports.forEach(r => { disData[r.disease] = (disData[r.disease]||0)+1; });
-  if (chart1) chart1.destroy();
-  const ctx = document.getElementById('chart-disease');
-  if (ctx) {
-    chart1 = new Chart(ctx, {
-      type: 'bar', data: { labels: Object.keys(disData), datasets: [{ label: 'จำนวน', data: Object.values(disData), backgroundColor: '#0284c7' }] },
-      options: { maintainAspectRatio: false }
-    });
-  }
-
-  const recent = reports.slice(0, 5);
-  document.getElementById('recent-reports').innerHTML = recent.map(r => `
-    <tr>
-      <td>${r.id}</td>
-      <td>${r.created_at?.slice(0,10)}</td>
-      <td>${r.disease}</td>
-      <td>${r.data?.fullname||'-'}</td>
-      <td>${r.data?.addr_village||'-'}</td>
-      <td>${r.status}</td>
-      <td><button class="text-blue-600" onclick="editReport('${r.id}')">แก้ไข</button></td>
-    </tr>`).join('');
-}
-
-// ============== REPORTS ==============
-async function renderReports() {
-  const reports = await STORE.reports();
-  document.getElementById('all-reports').innerHTML = reports.map(r => `
-    <tr>
-      <td>${r.id}</td>
-      <td>${r.created_at?.slice(0,10)}</td>
-      <td>${r.disease}</td>
-      <td>${r.data?.fullname||'-'}</td>
-      <td>${r.data?.addr_village||'-'}</td>
-      <td>${r.status}</td>
-      <td class="text-right">
-        <button class="text-blue-600 mr-2" onclick="editReport('${r.id}')">แก้ไข</button>
-        <button class="text-red-600" onclick="deleteReport('${r.id}')">ลบ</button>
-      </td>
-    </tr>`).join('');
-}
-
-async function deleteReport(id) {
-  if (!confirm('ลบรายงาน?')) return;
-  await supabase.from('reports').delete().eq('id', id);
-  renderReports();
-}
-
-// ============== FORM ==============
-function renderNewForm() {
-  editId = null; currentReport = null; currentDisease = null;
-  document.getElementById('disease-picker').innerHTML = DISEASES.map(d => `
-    <button class="btn btn-ghost text-left" onclick="selectDisease('${d.id}')">
-      <div class="text-xl">${d.icon} ${d.name}</div>
-    </button>`).join('');
-  document.getElementById('form-container').innerHTML = '';
-}
-
-function selectDisease(id) {
-  currentDisease = id;
-  renderFormFields();
-}
-
-async function editReport(id) {
-  const reports = await STORE.reports();
-  currentReport = reports.find(r => r.id === id);
-  if (!currentReport) return;
-  editId = id; currentDisease = currentReport.disease;
-  goPage('new');
-  renderFormFields();
-}
-
-function renderFormFields() {
-  const d = currentReport?.data || {};
-  const syms = SYM[currentDisease] || [];
-  document.getElementById('form-container').innerHTML = `
-    <div class="card p-5 space-y-4">
-      <div class="field-row"><label>ชื่อ-สกุล:</label><input id="f_fullname" value="${d.fullname||''}"/></div>
-      <div class="field-row"><label>หมู่บ้าน:</label><input id="f_addr_village" value="${d.addr_village||''}"/></div>
-      <div class="field-row"><label>สถานะ:</label>
-        <select id="f_status">
-          <option value="draft" ${currentReport?.status==='draft'?'selected':''}>ร่าง</option>
-          <option value="completed" ${currentReport?.status==='completed'?'selected':''}>เสร็จสิ้น</option>
-        </select>
-      </div>
-      <div>
-        <label class="font-bold">อาการ:</label>
-        <div class="check-grid">
-          ${syms.map(s => `<label><input type="checkbox" name="sym" value="${s}" ${(d.symptoms||[]).includes(s)?'checked':''}/>${s}</label>`).join('')}
-        </div>
-      </div>
-      <button class="btn btn-success w-full" onclick="saveReport()">💾 บันทึกข้อมูล</button>
-    </div>`;
-}
-
-async function saveReport() {
-  const data = {
-    fullname: document.getElementById('f_fullname').value,
-    addr_village: document.getElementById('f_addr_village').value,
-    symptoms: [...document.querySelectorAll('input[name="sym"]:checked')].map(c=>c.value)
-  };
-  const status = document.getElementById('f_status').value;
-  const id = editId || 'RPT-' + Date.now();
-  
-  await supabase.from('reports').upsert({
-    id, disease: currentDisease, status, data, updated_at: new Date().toISOString()
-  });
-  alert('บันทึกสำเร็จ');
-  goPage('reports');
-}
-
-// ============== TEAM & SETTINGS ==============
-async function renderTeam() {
-  const team = await STORE.team();
-  document.getElementById('team-list').innerHTML = team.map((m, i) => `
-    <div class="flex gap-2 mb-2">
-      <input class="flex-1" value="${m.name||''}" onchange="updateTeam(${i},'name',this.value)" placeholder="ชื่อ"/>
-      <input class="flex-1" value="${m.position||''}" onchange="updateTeam(${i},'position',this.value)" placeholder="ตำแหน่ง"/>
-    </div>`).join('');
-}
-async function addTeamMember() {
-  const team = await STORE.team();
-  team.push({name:'', position:'', role:''});
-  await STORE.saveTeam(team); renderTeam();
-}
-async function updateTeam(i, k, v) {
-  const team = await STORE.team(); team[i][k] = v; await STORE.saveTeam(team);
-}
-
-async function loadSettingsForm() {
-  const s = await STORE.settings();
-  document.getElementById('set-org').value = s.org||'';
-  document.getElementById('set-tambon').value = s.tambon||'';
-}
-async function saveSettings() {
-  await STORE.saveSettings({
-    org: document.getElementById('set-org').value,
-    tambon: document.getElementById('set-tambon').value
-  });
-  alert('บันทึกสำเร็จ');
-}
 
 // ============== INIT ==============
-window.onload = () => {
-  console.log('App Initialized');
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-page]').forEach(el => {
+    el.addEventListener('click', () => goPage(el.dataset.page));
+  });
+  loadSettingsForm();
+  renderTeam();
+  renderDiseasePicker();
+  populateFilterDiseases();
   goPage('dashboard');
-};
+});
+
+function goPage(p) {
+  document.querySelectorAll('.page').forEach(el => el.classList.add('hidden'));
+  document.getElementById('page-' + p).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.querySelector(`.nav-item[data-page="${p}"]`);
+  if (navEl) navEl.classList.add('active');
+  if (p === 'dashboard') renderDashboard();
+  if (p === 'reports') renderReports();
+  if (p === 'new') {
+    if (!editId) { currentReport = null; currentDisease = null; renderForm(); }
+  }
+  if (p === 'team') renderTeam();
+}
+
+// ============== DASHBOARD ==============
+function renderDashboard() {
+  const reports = STORE.reports();
+  const total = reports.length;
+  const completed = reports.filter(r => r.status === 'completed').length;
+  const submitted = reports.filter(r => r.status === 'submitted').length;
+  const draft = reports.filter(r => r.status === 'draft').length;
+
+  const cards = [
+    {label:'รายงานทั้งหมด', value: total, color:'#0284c7', icon:'📋'},
+    {label:'ร่าง', value: draft, color:'#f59e0b', icon:'✏️'},
+    {label:'เสร็จสิ้น', value: completed, color:'#16a34a', icon:'✅'},
+    {label:'ส่ง สสอ.แล้ว', value: submitted, color:'#7c3aed', icon:'📤'},
+  ];
+  document.getElementById('stat-cards').innerHTML = cards.map(c =>
+    `<div class="stat-card" style="border-color:${c.color}">
+      <div class="text-3xl">${c.icon}</div>
+      <div class="text-3xl font-bold mt-2" style="color:${c.color}">${c.value}</div>
+      <div class="text-sm text-slate-500">${c.label}</div>
+    </div>`).join('');
+
+  // disease chart
+  const byDisease = {};
+  reports.forEach(r => { byDisease[r.disease] = (byDisease[r.disease] || 0) + 1; });
+  const dlabels = Object.keys(byDisease).map(id => DISEASES.find(d=>d.id===id)?.name || id);
+  const dvals = Object.values(byDisease);
+
+  if (window._dchart) window._dchart.destroy();
+  window._dchart = new Chart(document.getElementById('chart-disease'), {
+    type: 'bar',
+    data: {labels: dlabels, datasets:[{label:'จำนวน', data: dvals, backgroundColor: '#0284c7'}]},
+    options: {responsive:true, plugins:{legend:{display:false}}, indexAxis:'y'}
+  });
+
+  // monthly chart
+  const months = [];
+  const now = new Date();
+  for (let i=11; i>=0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({key: d.toISOString().slice(0,7), label: (d.getMonth()+1)+'/'+(d.getFullYear()+543).toString().slice(-2)});
+  }
+  const monthVals = months.map(m => reports.filter(r => (r.created||'').slice(0,7) === m.key).length);
+
+  if (window._mchart) window._mchart.destroy();
+  window._mchart = new Chart(document.getElementById('chart-monthly'), {
+    type: 'line',
+    data: {labels: months.map(m=>m.label), datasets:[{label:'รายงาน', data: monthVals, borderColor:'#0284c7', backgroundColor:'rgba(2,132,199,0.1)', fill:true, tension:0.3}]},
+    options: {responsive:true}
+  });
+
+  // recent
+  const recent = [...reports].sort((a,b)=>(b.created||'').localeCompare(a.created||'')).slice(0,5);
+  document.getElementById('recent-reports').innerHTML = recent.length ?
+    recent.map(r => {
+      const d = DISEASES.find(d=>d.id===r.disease);
+      return `<tr>
+        <td class="font-mono">${r.id.slice(-6)}</td>
+        <td>${formatDate(r.created)}</td>
+        <td>${d?.icon||''} ${d?.name||r.disease}</td>
+        <td>${r.data.fullname || '-'}</td>
+        <td>หมู่ ${r.data.addr_moo||'-'} ${r.data.addr_village||''}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td><button class="btn btn-ghost text-xs" onclick="editReport('${r.id}')">เปิด</button></td>
+      </tr>`;
+    }).join('') :
+    `<tr><td colspan="7" class="text-center text-slate-400 py-6">ยังไม่มีรายงาน — <a class="text-sky-600 underline cursor-pointer" onclick="goPage('new')">สร้างรายงานแรก</a></td></tr>`;
+}
+
+function statusBadge(s) {
+  if (s==='draft') return '<span class="badge badge-yellow">ร่าง</span>';
+  if (s==='completed') return '<span class="badge badge-green">เสร็จสิ้น</span>';
+  if (s==='submitted') return '<span class="badge badge-blue">ส่ง สสอ.แล้ว</span>';
+  return '<span class="badge">-</span>';
+}
+
+function formatDate(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleDateString('th-TH', {year:'numeric', month:'short', day:'numeric'});
+}
+
+// ============== REPORTS LIST ==============
+function populateFilterDiseases() {
+  const sel = document.getElementById('filter-disease');
+  DISEASES.forEach(d => sel.innerHTML += `<option value="${d.id}">${d.name}</option>`);
+}
+
+function renderReports() {
+  const reports = STORE.reports();
+  const search = (document.getElementById('filter-search')?.value || '').toLowerCase();
+  const dis = document.getElementById('filter-disease')?.value || '';
+  const stat = document.getElementById('filter-status')?.value || '';
+  const filtered = reports.filter(r => {
+    if (dis && r.disease !== dis) return false;
+    if (stat && r.status !== stat) return false;
+    if (search) {
+      const txt = (r.data.fullname+' '+r.data.addr_village+' '+r.data.hn).toLowerCase();
+      if (!txt.includes(search)) return false;
+    }
+    return true;
+  }).sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+
+  const tbody = document.getElementById('all-reports');
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-slate-400 py-8">ไม่พบรายงาน</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(r => {
+    const d = DISEASES.find(d=>d.id===r.disease);
+    return `<tr>
+      <td class="font-mono">${r.id.slice(-6)}</td>
+      <td>${formatDate(r.created)}</td>
+      <td>${d?.icon||''} ${d?.name||r.disease}</td>
+      <td>${r.data.fullname || '-'}</td>
+      <td>หมู่ ${r.data.addr_moo||'-'} ${r.data.addr_village||''}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td class="text-right">
+        <button class="btn btn-ghost text-xs" onclick="editReport('${r.id}')">แก้ไข</button>
+        <button class="btn btn-primary text-xs" onclick="exportReportById('${r.id}')">PDF</button>
+        <button class="btn btn-danger text-xs" onclick="deleteReport('${r.id}')">ลบ</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function deleteReport(id) {
+  if (!confirm('ยืนยันการลบรายงานนี้?')) return;
+  STORE.saveReports(STORE.reports().filter(r => r.id !== id));
+  renderReports();
+  alert('ลบเรียบร้อย');
+}
+
+function editReport(id) {
+  const r = STORE.reports().find(r => r.id === id);
+  if (!r) return;
+  editId = id;
+  currentReport = r;
+  currentDisease = r.disease;
+  goPage('new');
+  renderForm();
+}
+
+// ============== FORM RENDERING ==============
+function renderDiseasePicker() {
+  const c = document.getElementById('disease-picker');
+  c.innerHTML = DISEASES.map(d => `
+    <button class="btn btn-ghost text-left flex items-center gap-2 disease-btn" data-id="${d.id}">
+      <span class="text-xl">${d.icon}</span>
+      <span class="text-sm">${d.name}</span>
+    </button>`).join('');
+  c.querySelectorAll('.disease-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      currentDisease = b.dataset.id;
+      currentReport = currentReport || {};
+      renderForm();
+    });
+  });
+}
+
+function renderForm() {
+  const c = document.getElementById('form-container');
+  const titleEl = document.getElementById('form-title');
+
+  // highlight selected disease button
+  document.querySelectorAll('.disease-btn').forEach(b => {
+    b.classList.toggle('btn-primary', b.dataset.id === currentDisease);
+    b.classList.toggle('btn-ghost', b.dataset.id !== currentDisease);
+  });
+
+  if (!currentDisease) {
+    titleEl.textContent = 'สร้างรายงานสอบสวนโรค';
+    c.innerHTML = `<div class="card p-10 text-center text-slate-400">
+      👆 กรุณาเลือกประเภทแบบสอบสวนด้านบน
+    </div>`;
+    return;
+  }
+
+  const dis = DISEASES.find(d => d.id === currentDisease);
+  titleEl.textContent = `${dis.icon} แบบสอบสวน${dis.name}`;
+  const data = (currentReport && currentReport.data) || {};
+
+  let html = '';
+
+  // Header
+  html += sectionCard('ข้อมูลการรายงาน', `
+    <div class="field-row">
+      <label class="w-32">เลขที่รายงาน:</label><input id="f_report_no" type="text" value="${data.report_no || autoReportNo()}"/>
+      <label class="w-32">วันที่สอบสวน:</label><input id="f_invest_date" type="date" value="${data.invest_date || today()}"/>
+      <label class="w-32">วันที่รายงาน:</label><input id="f_report_date" type="date" value="${data.report_date || today()}"/>
+    </div>
+    <div class="field-row">
+      <label class="w-32">หน่วยงานที่รายงาน:</label><input id="f_from_unit" type="text" value="${data.from_unit || STORE.settings().org}"/>
+      <label class="w-32">ส่งถึง:</label><input id="f_to_unit" type="text" value="${data.to_unit || STORE.settings().receiver}"/>
+    </div>`);
+
+  html += sectionCard(SEC_PATIENT.title, fieldRowsHtml(SEC_PATIENT.fields, data));
+  html += sectionCard(SEC_ADDRESS.title, fieldRowsHtml(SEC_ADDRESS.fields, data));
+  html += sectionCard(SEC_GUARDIAN.title, fieldRowsHtml(SEC_GUARDIAN.fields, data));
+  html += sectionCard(SEC_VITAL.title, fieldRowsHtml(SEC_VITAL.fields, data) + `
+    <div class="form-section mt-3"><div class="font-medium text-sm mb-2">อาการที่พบ (เลือกได้หลายข้อ)</div>
+    <div class="check-grid">
+      ${(SYM[currentDisease]||[]).map(s => `
+        <label><input type="checkbox" name="sym" value="${s}" ${(data.symptoms||[]).includes(s)?'checked':''}/>${s}</label>
+      `).join('')}
+    </div></div>
+    <div class="field-row mt-2">
+      <label class="w-44">อาการอื่น ๆ ระบุ:</label>
+      <textarea id="f_other_symptoms" rows="2" class="flex-1">${data.other_symptoms||''}</textarea>
+    </div>`);
+
+  // Hospitalization
+  html += sectionCard('3. การรักษาพยาบาล', `
+    <div class="field-row">
+      <label class="w-44">วันที่เข้ารักษาที่ รพ.แห่งแรก:</label><input id="f_first_hos_date" type="date" value="${data.first_hos_date||''}"/>
+      <label class="w-32">ชื่อ รพ.:</label><input id="f_first_hos_name" type="text" value="${data.first_hos_name||''}"/>
+    </div>
+    <div class="field-row">
+      <label class="w-44">วันที่ส่งต่อ:</label><input id="f_refer_date" type="date" value="${data.refer_date||''}"/>
+      <label class="w-32">ส่งต่อไปที่:</label><input id="f_refer_to" type="text" value="${data.refer_to||''}"/>
+    </div>
+    <div class="field-row">
+      <label class="w-44">ผลการรักษา:</label>
+      <select id="f_outcome">
+        ${['','หาย','ดีขึ้น','กำลังรักษา','ส่งต่อ','เสียชีวิต'].map(o => `<option ${data.outcome===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+      <label class="w-32">วันที่จำหน่าย/เสียชีวิต:</label><input id="f_dc_date" type="date" value="${data.dc_date||''}"/>
+    </div>`);
+
+  // Lab
+  html += sectionCard('4. การตรวจทางห้องปฏิบัติการ', `
+    <div class="check-grid">
+    ${(LAB[currentDisease]||[]).map(s => `<label><input type="checkbox" name="lab" value="${s}" ${(data.labs||[]).includes(s)?'checked':''}/>${s}</label>`).join('')}
+    </div>
+    <div class="field-row mt-2">
+      <label class="w-32">วันที่เก็บ:</label><input id="f_lab_date" type="date" value="${data.lab_date||''}"/>
+      <label class="w-32">ส่งตรวจที่:</label><input id="f_lab_to" type="text" value="${data.lab_to||''}"/>
+    </div>
+    <div class="field-row">
+      <label class="w-32">ผลตรวจ:</label>
+      <textarea id="f_lab_result" rows="2" class="flex-1">${data.lab_result||''}</textarea>
+    </div>`);
+
+  // Risk
+  html += sectionCard('5. ปัจจัยเสี่ยง / ประวัติสัมผัสในช่วง 7-21 วันก่อนป่วย', `
+    <div class="check-grid">
+    ${(RISK[currentDisease]||[]).map(s => `<label><input type="checkbox" name="risk" value="${s}" ${(data.risks||[]).includes(s)?'checked':''}/>${s}</label>`).join('')}
+    </div>
+    <div class="field-row mt-2">
+      <label class="w-44">รายละเอียดเพิ่มเติม:</label>
+      <textarea id="f_risk_detail" rows="3" class="flex-1">${data.risk_detail||''}</textarea>
+    </div>
+    <div class="field-row">
+      <label class="w-44">ประวัติเดินทาง 14 วัน:</label>
+      <textarea id="f_travel" rows="2" class="flex-1">${data.travel||''}</textarea>
+    </div>`);
+
+  // Diagnosis
+  html += sectionCard('6. การวินิจฉัย / นิยามผู้ป่วย', `
+    <div class="field-row">
+      <label class="w-32">การวินิจฉัย:</label>
+      <select id="f_diagnosis">
+        <option value="">-- เลือก --</option>
+        ${(DX[currentDisease]||[]).map(o => `<option ${data.diagnosis===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field-row">
+      <label class="w-32">ICD-10:</label><input id="f_icd10" type="text" value="${data.icd10||''}"/>
+      <label class="w-32">วันที่ยืนยัน:</label><input id="f_dx_date" type="date" value="${data.dx_date||''}"/>
+    </div>`);
+
+  // Investigation summary
+  html += sectionCard('7. สรุปผลการสอบสวน', `
+    <div class="field-row">
+      <label class="w-44">สรุปผลการสอบสวน:</label>
+      <textarea id="f_summary" rows="4" class="flex-1">${data.summary||''}</textarea>
+    </div>
+    <div class="field-row">
+      <label class="w-44">ปัญหาและอุปสรรค:</label>
+      <textarea id="f_problems" rows="3" class="flex-1">${data.problems||''}</textarea>
+    </div>
+    <div class="field-row">
+      <label class="w-44">ข้อเสนอแนะ:</label>
+      <textarea id="f_suggestions" rows="3" class="flex-1">${data.suggestions||''}</textarea>
+    </div>`);
+
+  // Control measures
+  html += sectionCard('8. มาตรการควบคุมและป้องกันโรคที่ดำเนินการ', `
+    <div class="check-grid">
+    ${CONTROL_MEASURES.map(s => `<label><input type="checkbox" name="cm" value="${s}" ${(data.control||[]).includes(s)?'checked':''}/>${s}</label>`).join('')}
+    </div>
+    <div class="field-row mt-2">
+      <label class="w-44">มาตรการเพิ่มเติม:</label>
+      <textarea id="f_control_other" rows="3" class="flex-1">${data.control_other||''}</textarea>
+    </div>
+    <div class="field-row">
+      <label class="w-44">ผู้สัมผัสที่ติดตาม (จำนวน):</label>
+      <input id="f_contact_count" type="number" class="w-32" value="${data.contact_count||''}"/>
+      <label class="w-32">พบป่วยเพิ่ม:</label>
+      <input id="f_secondary_count" type="number" class="w-32" value="${data.secondary_count||''}"/>
+    </div>`);
+
+  // Status
+  html += sectionCard('สถานะรายงาน', `
+    <div class="field-row">
+      <label class="w-32">สถานะ:</label>
+      <select id="f_status">
+        <option value="draft" ${(currentReport?.status||'draft')==='draft'?'selected':''}>ร่าง</option>
+        <option value="completed" ${currentReport?.status==='completed'?'selected':''}>เสร็จสิ้น (พร้อมส่ง)</option>
+        <option value="submitted" ${currentReport?.status==='submitted'?'selected':''}>ส่ง สสอ.แล้ว</option>
+      </select>
+      <label class="w-32">วันที่ส่ง สสอ.:</label>
+      <input id="f_submit_date" type="date" value="${data.submit_date||''}"/>
+    </div>`);
+
+  c.innerHTML = html;
+}
+
+function sectionCard(title, body) {
+  return `<div class="card p-5"><h3 class="font-semibold text-slate-700 mb-3 text-base border-b pb-2">${title}</h3>${body}</div>`;
+}
+
+function fieldRowsHtml(fields, data) {
+  // group fields into rows of approx fitting size
+  let rows = '';
+  let row = '';
+  let count = 0;
+  fields.forEach((f, i) => {
+    let input = '';
+    const val = data[f.k] || '';
+    if (f.t === 'select') {
+      input = `<select id="f_${f.k}" class="${f.w||''}"><option value=""></option>${f.opts.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+    } else {
+      input = `<input id="f_${f.k}" type="${f.t}" class="${f.w||''}" value="${val.replace?val.replace(/"/g,'&quot;'):val}" ${f.step?'step='+f.step:''}/>`;
+    }
+    row += `<label class="text-sm">${f.l}:</label>${input} `;
+    count++;
+    if (count >= 3 || i === fields.length - 1) {
+      rows += `<div class="field-row">${row}</div>`;
+      row = ''; count = 0;
+    }
+  });
+  return rows;
+}
+
+function autoReportNo() {
+  const reports = STORE.reports();
+  const year = new Date().getFullYear() + 543;
+  const seq = String(reports.length + 1).padStart(3, '0');
+  return `รง.${year}/${seq}`;
+}
+
+function today() { return new Date().toISOString().slice(0,10); }
+
+// ============== SAVE ==============
+function collectForm() {
+  const data = {};
+  document.querySelectorAll('[id^="f_"]').forEach(el => {
+    const k = el.id.replace(/^f_/, '');
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+      data[k] = el.value;
+    }
+  });
+  data.symptoms = [...document.querySelectorAll('input[name="sym"]:checked')].map(c=>c.value);
+  data.labs = [...document.querySelectorAll('input[name="lab"]:checked')].map(c=>c.value);
+  data.risks = [...document.querySelectorAll('input[name="risk"]:checked')].map(c=>c.value);
+  data.control = [...document.querySelectorAll('input[name="cm"]:checked')].map(c=>c.value);
+  return data;
+}
+
+function saveReport() {
+  if (!currentDisease) { alert('กรุณาเลือกประเภทแบบสอบสวน'); return; }
+  const data = collectForm();
+  const status = data.status || 'draft';
+  delete data.status;
+  const reports = STORE.reports();
+
+  if (editId) {
+    const idx = reports.findIndex(r => r.id === editId);
+    if (idx >= 0) {
+      reports[idx] = { ...reports[idx], data, disease: currentDisease, status, updated: new Date().toISOString() };
+    }
+  } else {
+    const id = 'RPT-' + Date.now();
+    reports.push({ id, disease: currentDisease, data, status, created: new Date().toISOString(), updated: new Date().toISOString() });
+    editId = id;
+    currentReport = reports[reports.length - 1];
+  }
+  STORE.saveReports(reports);
+  alert('✅ บันทึกรายงานเรียบร้อย');
+}
+
+// ============== TEAM ==============
+function renderTeam() {
+  const team = STORE.team();
+  const c = document.getElementById('team-list');
+  c.innerHTML = team.map((m, i) => `
+    <div class="border rounded-lg p-3 flex flex-wrap gap-2 items-center">
+      <input class="flex-1" placeholder="ชื่อ-สกุล" value="${m.name||''}" oninput="updateTeam(${i},'name',this.value)"/>
+      <input class="flex-1" placeholder="ตำแหน่ง" value="${m.position||''}" oninput="updateTeam(${i},'position',this.value)"/>
+      <input class="w-40" placeholder="บทบาท" value="${m.role||''}" oninput="updateTeam(${i},'role',this.value)"/>
+      <button class="btn btn-danger text-xs" onclick="removeTeam(${i})">ลบ</button>
+    </div>`).join('');
+}
+function updateTeam(i, k, v) {
+  const team = STORE.team(); team[i][k] = v; STORE.saveTeam(team);
+}
+function addTeamMember() {
+  const team = STORE.team();
+  team.push({name:'', position:'', role:'สมาชิกทีม'});
+  STORE.saveTeam(team); renderTeam();
+}
+function removeTeam(i) {
+  const team = STORE.team(); team.splice(i,1); STORE.saveTeam(team); renderTeam();
+}
+
+// ============== SETTINGS ==============
+function loadSettingsForm() {
+  const s = STORE.settings();
+  document.getElementById('set-org').value = s.org||'';
+  document.getElementById('set-address').value = s.address||'';
+  document.getElementById('set-tambon').value = s.tambon||'';
+  document.getElementById('set-amphoe').value = s.amphoe||'';
+  document.getElementById('set-province').value = s.province||'';
+  document.getElementById('set-phone').value = s.phone||'';
+  document.getElementById('set-receiver').value = s.receiver||'';
+  document.getElementById('set-director').value = s.director||'';
+  document.getElementById('set-director-pos').value = s.directorPos||'';
+}
+function saveSettings() {
+  STORE.saveSettings({
+    org: document.getElementById('set-org').value,
+    address: document.getElementById('set-address').value,
+    tambon: document.getElementById('set-tambon').value,
+    amphoe: document.getElementById('set-amphoe').value,
+    province: document.getElementById('set-province').value,
+    phone: document.getElementById('set-phone').value,
+    receiver: document.getElementById('set-receiver').value,
+    director: document.getElementById('set-director').value,
+    directorPos: document.getElementById('set-director-pos').value,
+  });
+  alert('✅ บันทึกการตั้งค่าเรียบร้อย');
+}
+function exportData() {
+  const data = { reports: STORE.reports(), team: STORE.team(), settings: STORE.settings() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `disease-investigation-backup-${today()}.json`;
+  a.click();
+}
+function importData(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const d = JSON.parse(ev.target.result);
+      if (d.reports) STORE.saveReports(d.reports);
+      if (d.team) STORE.saveTeam(d.team);
+      if (d.settings) STORE.saveSettings(d.settings);
+      alert('✅ นำเข้าข้อมูลเรียบร้อย');
+      loadSettingsForm(); renderTeam(); renderDashboard();
+    } catch (er) { alert('❌ ไฟล์ไม่ถูกต้อง'); }
+  };
+  reader.readAsText(file);
+}
+function clearAllData() {
+  if (!confirm('ยืนยันการล้างข้อมูลทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
+  if (!confirm('คุณแน่ใจหรือไม่? ข้อมูลทั้งหมดจะถูกลบ')) return;
+  localStorage.clear();
+  alert('ล้างข้อมูลเรียบร้อย');
+  location.reload();
+}
+
+// ============== PDF EXPORT ==============
+async function exportPDF() {
+  if (!currentDisease) { alert('กรุณาเลือกประเภทแบบสอบสวนก่อน'); return; }
+  // Save first
+  saveReport();
+  const data = collectForm();
+  await renderAndDownloadPDF(currentDisease, data);
+}
+async function exportReportById(id) {
+  const r = STORE.reports().find(r => r.id === id);
+  if (!r) return;
+  await renderAndDownloadPDF(r.disease, r.data);
+}
+
+async function renderAndDownloadPDF(diseaseId, data) {
+  const dis = DISEASES.find(d => d.id === diseaseId);
+  const s = STORE.settings();
+  const team = STORE.team();
+  const html = generatePDFHTML(dis, data, s, team);
+  const area = document.getElementById('pdf-render-area');
+  area.innerHTML = html;
+  // wait for layout
+  await new Promise(r => setTimeout(r, 100));
+  const pages = area.querySelectorAll('.pdf-page');
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'p' });
+  for (let i=0; i<pages.length; i++) {
+    const canvas = await html2canvas(pages[i], { scale: 2, useCORS:true });
+    const img = canvas.toDataURL('image/jpeg', 0.92);
+    const w = pdf.internal.pageSize.getWidth();
+    const h = pdf.internal.pageSize.getHeight();
+    if (i>0) pdf.addPage();
+    pdf.addImage(img, 'JPEG', 0, 0, w, h);
+  }
+  pdf.save(`รายงานสอบสวน-${dis.name}-${data.fullname||'ผู้ป่วย'}-${today()}.pdf`);
+  area.innerHTML = '';
+}
+
+function generatePDFHTML(dis, d, s, team) {
+  const checkmark = (arr, item) => (arr||[]).includes(item) ? '☑' : '☐';
+  const v = (k) => d[k] || '...........................';
+  const symList = SYM[dis.id] || [];
+  const labList = LAB[dis.id] || [];
+  const riskList = RISK[dis.id] || [];
+
+  const symptomsHTML = symList.length ? symList.map(s => `${checkmark(d.symptoms, s)} ${s}`).join('  &nbsp; ') : '-';
+  const labsHTML = labList.length ? labList.map(s => `${checkmark(d.labs, s)} ${s}`).join('  &nbsp; ') : '-';
+  const risksHTML = riskList.length ? riskList.map(s => `${checkmark(d.risks, s)} ${s}`).join('  &nbsp; ') : '-';
+  const controlHTML = CONTROL_MEASURES.map(s => `${checkmark(d.control, s)} ${s}`).join('  &nbsp; ');
+
+  // PAGE 1
+  let p1 = `
+  <div class="pdf-page">
+    <div style="text-align:center; font-size:11px; color:#666;">แบบสอบสวนโรคเฉพาะราย — กองระบาดวิทยา กรมควบคุมโรค กระทรวงสาธารณสุข</div>
+    <h1>แบบสอบสวน${dis.name} (${dis.nameEn})</h1>
+    <div style="text-align:center; font-size:12px; margin-bottom:8px;">
+      <strong>${s.org}</strong> &nbsp; ตำบล${s.tambon} อำเภอ${s.amphoe} จังหวัด${s.province}<br>
+      เลขที่รายงาน: <strong>${v('report_no')}</strong> &nbsp; วันที่สอบสวน: ${formatDateTH(d.invest_date)} &nbsp; วันที่รายงาน: ${formatDateTH(d.report_date)}<br>
+      จาก: ${v('from_unit')} &nbsp; ถึง: ${v('to_unit')}
+    </div>
+
+    <h2>1. ข้อมูลทั่วไป</h2>
+    <table>
+      <tr><td class="label">ชื่อ-สกุล</td><td>${v('prefix')} ${v('fullname')}</td>
+          <td class="label">เลขบัตรประชาชน</td><td>${v('idcard')}</td></tr>
+      <tr><td class="label">เพศ</td><td>${v('sex')}</td>
+          <td class="label">อายุ</td><td>${v('age_y')} ปี ${v('age_m')||0} เดือน</td></tr>
+      <tr><td class="label">HN / AN</td><td>${v('hn')} / ${v('an')}</td>
+          <td class="label">ศาสนา / สัญชาติ</td><td>${v('religion')} / ${v('nationality')}</td></tr>
+      <tr><td class="label">อาชีพ</td><td>${v('occupation')}</td>
+          <td class="label">ที่ทำงาน/โรงเรียน</td><td>${v('workplace')} ${d.classroom?'ชั้น '+d.classroom:''}</td></tr>
+      <tr><td class="label">ที่อยู่ขณะป่วย</td><td colspan="3">บ้านเลขที่ ${v('addr_no')} หมู่ ${v('addr_moo')} ${v('addr_village')} ซ.${v('addr_soi')} ถ.${v('addr_road')} ต.${v('addr_tambon')} อ.${v('addr_amphoe')} จ.${v('addr_province')} โทร ${v('phone')} <br>เขต: ${v('addr_zone')} GPS: ${v('gps')}</td></tr>
+      <tr><td class="label">ผู้ปกครอง</td><td>${v('guard_name')} (${v('guard_relation')})</td>
+          <td class="label">โทร ผู้ปกครอง</td><td>${v('guard_phone')}</td></tr>
+    </table>
+
+    <h2>2. อาการและอาการแสดง</h2>
+    <table>
+      <tr><td class="label">วันที่เริ่มป่วย</td><td>${formatDateTH(d.onset_date)} ${d.onset_time?'เวลา '+d.onset_time+' น.':''}</td>
+          <td class="label">อุณหภูมิแรกรับ</td><td>${v('temp')} °C</td></tr>
+      <tr><td class="label">ชีพจร</td><td>${v('pulse')} ครั้ง/นาที</td>
+          <td class="label">หายใจ</td><td>${v('rr')} ครั้ง/นาที</td></tr>
+      <tr><td class="label">ความดันโลหิต</td><td colspan="3">${v('bp')} มม.ปรอท</td></tr>
+      <tr><td class="label">อาการที่พบ</td><td colspan="3" style="line-height:1.8;">${symptomsHTML}</td></tr>
+      <tr><td class="label">อาการอื่น ๆ</td><td colspan="3">${v('other_symptoms')}</td></tr>
+    </table>
+
+    <h2>3. การรักษาพยาบาล</h2>
+    <table>
+      <tr><td class="label">รพ.แห่งแรก</td><td>${v('first_hos_name')}</td>
+          <td class="label">วันที่เข้ารักษา</td><td>${formatDateTH(d.first_hos_date)}</td></tr>
+      <tr><td class="label">ส่งต่อไปที่</td><td>${v('refer_to')}</td>
+          <td class="label">วันที่ส่งต่อ</td><td>${formatDateTH(d.refer_date)}</td></tr>
+      <tr><td class="label">ผลการรักษา</td><td>${v('outcome')}</td>
+          <td class="label">วันที่จำหน่าย/เสียชีวิต</td><td>${formatDateTH(d.dc_date)}</td></tr>
+    </table>
+  </div>`;
+
+  // PAGE 2
+  let p2 = `
+  <div class="pdf-page">
+    <h2>4. การตรวจทางห้องปฏิบัติการ</h2>
+    <table>
+      <tr><td class="label">รายการตรวจ</td><td colspan="3" style="line-height:1.8;">${labsHTML}</td></tr>
+      <tr><td class="label">วันที่เก็บตัวอย่าง</td><td>${formatDateTH(d.lab_date)}</td>
+          <td class="label">ส่งตรวจที่</td><td>${v('lab_to')}</td></tr>
+      <tr><td class="label">ผลการตรวจ</td><td colspan="3">${(d.lab_result||'-').replace(/\n/g,'<br>')}</td></tr>
+    </table>
+
+    <h2>5. ปัจจัยเสี่ยง / ประวัติสัมผัส</h2>
+    <table>
+      <tr><td class="label">ปัจจัยเสี่ยง</td><td colspan="3" style="line-height:1.8;">${risksHTML}</td></tr>
+      <tr><td class="label">รายละเอียดเพิ่มเติม</td><td colspan="3">${(d.risk_detail||'-').replace(/\n/g,'<br>')}</td></tr>
+      <tr><td class="label">ประวัติเดินทาง 14 วัน</td><td colspan="3">${(d.travel||'-').replace(/\n/g,'<br>')}</td></tr>
+    </table>
+
+    <h2>6. การวินิจฉัย</h2>
+    <table>
+      <tr><td class="label">การวินิจฉัย</td><td>${v('diagnosis')}</td>
+          <td class="label">ICD-10</td><td>${v('icd10')}</td></tr>
+      <tr><td class="label">วันที่ยืนยันการวินิจฉัย</td><td colspan="3">${formatDateTH(d.dx_date)}</td></tr>
+    </table>
+
+    <h2>7. สรุปผลการสอบสวน</h2>
+    <table>
+      <tr><td class="label" style="width:25%">สรุปผลการสอบสวน</td><td>${(d.summary||'-').replace(/\n/g,'<br>')}</td></tr>
+      <tr><td class="label">ปัญหาและอุปสรรค</td><td>${(d.problems||'-').replace(/\n/g,'<br>')}</td></tr>
+      <tr><td class="label">ข้อเสนอแนะ</td><td>${(d.suggestions||'-').replace(/\n/g,'<br>')}</td></tr>
+    </table>
+  </div>`;
+
+  // PAGE 3 — Control + Signatures
+  const teamRows = team.map((m, i) => `
+    <div style="display:inline-block; width:30%; margin:18px 1.5% 0; vertical-align:top; text-align:center;">
+      <div style="border-bottom:1px dotted #333; height:42px; margin-bottom:4px;"></div>
+      <div style="font-size:13px;">(${m.name || '..............................................'})</div>
+      <div style="font-size:12px; color:#555;">${m.position || ''}</div>
+      <div style="font-size:11px; color:#555;">${m.role || ''}</div>
+    </div>`).join('');
+
+  let p3 = `
+  <div class="pdf-page">
+    <h2>8. มาตรการควบคุมและป้องกันโรคที่ดำเนินการ</h2>
+    <table>
+      <tr><td class="label" style="width:25%">มาตรการที่ดำเนินการ</td><td style="line-height:1.9;">${controlHTML}</td></tr>
+      <tr><td class="label">มาตรการเพิ่มเติม</td><td>${(d.control_other||'-').replace(/\n/g,'<br>')}</td></tr>
+      <tr><td class="label">จำนวนผู้สัมผัสที่ติดตาม</td><td>${v('contact_count')} ราย &nbsp; พบป่วยเพิ่ม: ${v('secondary_count')} ราย</td></tr>
+    </table>
+
+    <h2>ทีมสอบสวนโรค (ลงนาม)</h2>
+    <div style="margin-top: 30px;">
+      ${teamRows || '<div style="color:#999;">— ยังไม่ได้กรอกข้อมูลทีมสอบสวน —</div>'}
+    </div>
+
+    <div style="margin-top: 50px; text-align:right; padding-right: 30px;">
+      <div style="display:inline-block; text-align:center; width: 280px;">
+        <div style="border-bottom:1px dotted #333; height:42px; margin-bottom:4px;"></div>
+        <div style="font-size:13px;">(${s.director || '..............................................'})</div>
+        <div style="font-size:12px; color:#555;">${s.directorPos || ''}</div>
+        <div style="font-size:11px; color:#555;">${s.org || ''}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:30px; font-size:11px; color:#666; border-top:1px solid #ccc; padding-top:8px;">
+      เอกสารนี้จัดทำโดย ${s.org} ส่งถึง ${s.receiver} <br>
+      วันที่ส่งรายงาน: ${formatDateTH(d.submit_date) || '............................'} &nbsp;
+      เลขที่รายงาน: ${v('report_no')} &nbsp; โทร: ${s.phone || '-'}
+    </div>
+  </div>`;
+
+  return p1 + p2 + p3;
+}
+
+function formatDateTH(iso) {
+  if (!iso) return '............................';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const day = d.getDate();
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const m = months[d.getMonth()];
+  const y = d.getFullYear() + 543;
+  return `${day} ${m} ${y}`;
+}
 </script>
 </body>
 </html>
